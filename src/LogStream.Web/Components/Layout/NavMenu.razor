@@ -1,0 +1,44 @@
+<MudNavMenu>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="Icons.Material.Filled.Dashboard">
+        Dashboard
+    </MudNavLink>
+    <MudNavLink Href="/logs" Match="NavLinkMatch.Prefix" Icon="Icons.Material.Filled.List">
+        Logs
+    </MudNavLink>
+    <MudNavLink Href="/search" Match="NavLinkMatch.Prefix" Icon="Icons.Material.Filled.Search">
+        Search
+    </MudNavLink>
+    <MudNavLink Href="/analytics" Match="NavLinkMatch.Prefix" Icon="Icons.Material.Filled.Analytics">
+        Analytics
+    </MudNavLink>
+    <MudNavLink Href="/alerts" Match="NavLinkMatch.Prefix" Icon="Icons.Material.Filled.Warning">
+        Alerts
+    </MudNavLink>
+    
+    <MudNavGroup Text="Administration" Icon="Icons.Material.Filled.Settings" Expanded="false">
+        <MudNavLink Href="/admin/tenants" Icon="Icons.Material.Filled.Business">
+            Tenants
+        </MudNavLink>
+        <MudNavLink Href="/admin/users" Icon="Icons.Material.Filled.People">
+            Users
+        </MudNavLink>
+        <MudNavLink Href="/admin/api-keys" Icon="Icons.Material.Filled.Key">
+            API Keys
+        </MudNavLink>
+        <MudNavLink Href="/admin/retention" Icon="Icons.Material.Filled.Archive">
+            Retention
+        </MudNavLink>
+    </MudNavGroup>
+    
+    <MudNavGroup Text="System" Icon="Icons.Material.Filled.Computer" Expanded="false">
+        <MudNavLink Href="/system/health" Icon="Icons.Material.Filled.Health">
+            Health
+        </MudNavLink>
+        <MudNavLink Href="/system/metrics" Icon="Icons.Material.Filled.Monitoring">
+            Metrics
+        </MudNavLink>
+        <MudNavLink Href="/system/logs" Icon="Icons.Material.Filled.BugReport">
+            System Logs
+        </MudNavLink>
+    </MudNavGroup>
+</MudNavMenu>

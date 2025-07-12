@@ -1,0 +1,35 @@
+{
+  "version": "2.0",
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "excludedTypes": "Request"
+      }
+    }
+  },
+  "functionTimeout": "00:05:00",
+  "healthMonitor": {
+    "enabled": true,
+    "healthCheckInterval": "00:00:10",
+    "healthCheckWindow": "00:02:00",
+    "healthCheckThreshold": 6,
+    "counterThreshold": 0.80
+  },
+  "extensions": {
+    "serviceBus": {
+      "prefetchCount": 100,
+      "maxAutoRenewDuration": "00:05:00",
+      "autoCompleteMessages": true,
+      "maxConcurrentCalls": 16,
+      "maxConcurrentSessions": 8
+    },
+    "eventHubs": {
+      "batchCheckpointFrequency": 1,
+      "eventProcessorOptions": {
+        "maxBatchSize": 64,
+        "prefetchCount": 256
+      }
+    }
+  }
+}

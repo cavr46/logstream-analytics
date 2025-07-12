@@ -1,0 +1,330 @@
+@page "/"
+@page "/dashboard"
+@page "/dashboard/{TenantId}"
+@using LogStream.Web.Services
+@using LogStream.Web.Models
+@inject IDashboardService DashboardService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Dashboard - LogStream Analytics</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <MudText>Loading dashboard...</MudText>
+    }
+    else if (_dashboardData != null)
+    {
+        <MudGrid>
+            <!-- Key Metrics Cards -->
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="4">
+                    <MudCardContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="Icons.Material.Filled.Today" Color="Color.Primary" Size="Size.Large" />
+                            <div class="ml-3">
+                                <MudText Typo="Typo.body2">Today's Logs</MudText>
+                                <MudText Typo="Typo.h4">@_dashboardData.Metrics.TotalLogsToday.ToString("N0")</MudText>
+                            </div>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="4">
+                    <MudCardContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="Icons.Material.Filled.Error" Color="Color.Error" Size="Size.Large" />
+                            <div class="ml-3">
+                                <MudText Typo="Typo.body2">Error Rate</MudText>
+                                <MudText Typo="Typo.h4">@_dashboardData.Metrics.ErrorRate.ToString("F1")%</MudText>
+                            </div>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="4">
+                    <MudCardContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="Icons.Material.Filled.Storage" Color="Color.Info" Size="Size.Large" />
+                            <div class="ml-3">
+                                <MudText Typo="Typo.body2">Storage Used</MudText>
+                                <MudText Typo="Typo.h4">@_dashboardData.Metrics.StorageUsedMB.ToString("N0") MB</MudText>
+                            </div>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="4">
+                    <MudCardContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="Icons.Material.Filled.Schedule" Color="Color.Success" Size="Size.Large" />
+                            <div class="ml-3">
+                                <MudText Typo="Typo.body2">Last Log</MudText>
+                                <MudText Typo="Typo.h6">@GetTimeAgo(_dashboardData.Metrics.LastLogReceived)</MudText>
+                            </div>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Log Level Distribution Chart -->
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Log Level Distribution</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <div style="height: 300px;">
+                            <canvas id="logLevelChart"></canvas>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Top Applications -->
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Top Applications</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudTable Items="_dashboardData.TopApplications" Hover="true" Dense="true">
+                            <HeaderContent>
+                                <MudTh>Application</MudTh>
+                                <MudTh>Environment</MudTh>
+                                <MudTh>Logs</MudTh>
+                                <MudTh>Errors</MudTh>
+                                <MudTh>Status</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Application">@context.Name</MudTd>
+                                <MudTd DataLabel="Environment">
+                                    <MudChip Size="Size.Small" Color="GetEnvironmentColor(context.Environment)">
+                                        @context.Environment
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Logs">@context.LogCount.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Errors">@context.ErrorCount.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Status">
+                                    <MudChip Size="Size.Small" Color="context.Status == "Active" ? Color.Success : Color.Warning">
+                                        @context.Status
+                                    </MudChip>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Recent Logs -->
+            <MudItem xs="12" md="8">
+                <MudCard Elevation="4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Recent Logs</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudIconButton Icon="Icons.Material.Filled.Refresh" Color="Color.Default" OnClick="RefreshRecentLogs" />
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudTable Items="_dashboardData.RecentLogs" Hover="true" Dense="true" Height="400px" FixedHeader="true">
+                            <HeaderContent>
+                                <MudTh>Time</MudTh>
+                                <MudTh>Level</MudTh>
+                                <MudTh>Application</MudTh>
+                                <MudTh>Message</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Time">
+                                    <MudText Typo="Typo.caption">@context.Timestamp.ToString("HH:mm:ss")</MudText>
+                                </MudTd>
+                                <MudTd DataLabel="Level">
+                                    <MudChip Size="Size.Small" Color="GetLogLevelColor(context.Level)">
+                                        @context.Level
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Application">
+                                    <MudText Typo="Typo.body2">@context.Application</MudText>
+                                    <MudText Typo="Typo.caption">@context.Environment</MudText>
+                                </MudTd>
+                                <MudTd DataLabel="Message">
+                                    <MudText Typo="Typo.body2">@context.Message</MudText>
+                                    @if (context.HasException)
+                                    {
+                                        <MudIcon Icon="Icons.Material.Filled.BugReport" Size="Size.Small" Color="Color.Error" />
+                                    }
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Active Alerts -->
+            <MudItem xs="12" md="4">
+                <MudCard Elevation="4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Active Alerts</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (_dashboardData.ActiveAlerts.Any())
+                        {
+                            <MudTimeline>
+                                @foreach (var alert in _dashboardData.ActiveAlerts.Take(5))
+                                {
+                                    <MudTimelineItem Color="GetAlertColor(alert.Severity)" Size="Size.Small">
+                                        <MudText Typo="Typo.body2">@alert.Title</MudText>
+                                        <MudText Typo="Typo.caption">@alert.CreatedAt.ToString("MMM dd, HH:mm")</MudText>
+                                    </MudTimelineItem>
+                                }
+                            </MudTimeline>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Success">No active alerts</MudAlert>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error">Failed to load dashboard data.</MudAlert>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public string? TenantId { get; set; }
+
+    private DashboardViewModel? _dashboardData;
+    private bool _loading = true;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardData();
+        
+        // Set up auto-refresh every 30 seconds
+        _refreshTimer = new Timer(async _ => await InvokeAsync(LoadDashboardData), null, 
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_loading)
+        {
+            await LoadDashboardData();
+        }
+    }
+
+    private async Task LoadDashboardData()
+    {
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            var tenantId = TenantId ?? "default-tenant"; // In production, get from user context
+            _dashboardData = await DashboardService.GetDashboardDataAsync(tenantId);
+
+            // Update charts
+            await UpdateLogLevelChart();
+        }
+        catch (Exception ex)
+        {
+            // Log error
+            _dashboardData = null;
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshRecentLogs()
+    {
+        if (_dashboardData != null)
+        {
+            var tenantId = TenantId ?? "default-tenant";
+            _dashboardData.RecentLogs = await DashboardService.GetRecentLogsAsync(tenantId, 20);
+            StateHasChanged();
+        }
+    }
+
+    private async Task UpdateLogLevelChart()
+    {
+        if (_dashboardData?.TopLogLevels?.Any() == true)
+        {
+            var data = _dashboardData.TopLogLevels.Select(l => new { 
+                label = l.Name, 
+                value = l.Count, 
+                color = l.Color 
+            }).ToArray();
+
+            await JSRuntime.InvokeVoidAsync("updatePieChart", "logLevelChart", data);
+        }
+    }
+
+    private Color GetLogLevelColor(string level) => level.ToUpper() switch
+    {
+        "TRACE" => Color.Default,
+        "DEBUG" => Color.Info,
+        "INFO" => Color.Success,
+        "WARN" => Color.Warning,
+        "ERROR" => Color.Error,
+        "FATAL" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private Color GetEnvironmentColor(string environment) => environment.ToLower() switch
+    {
+        "production" => Color.Error,
+        "staging" => Color.Warning,
+        "development" => Color.Info,
+        _ => Color.Default
+    };
+
+    private Color GetAlertColor(string severity) => severity.ToUpper() switch
+    {
+        "CRITICAL" => Color.Error,
+        "WARNING" => Color.Warning,
+        "INFO" => Color.Info,
+        _ => Color.Default
+    };
+
+    private string GetTimeAgo(DateTime dateTime)
+    {
+        if (dateTime == DateTime.MinValue) return "Never";
+        
+        var timeSpan = DateTime.UtcNow - dateTime;
+        
+        return timeSpan.TotalMinutes switch
+        {
+            < 1 => "Just now",
+            < 60 => $"{(int)timeSpan.TotalMinutes}m ago",
+            < 1440 => $"{(int)timeSpan.TotalHours}h ago",
+            _ => $"{(int)timeSpan.TotalDays}d ago"
+        };
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

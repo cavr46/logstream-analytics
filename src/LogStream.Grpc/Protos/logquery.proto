@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+option csharp_namespace = "LogStream.Grpc.Protos";
+
+package logquery;
+
+// Log query service
+service LogQuery {
+  // Search log entries
+  rpc SearchLogs(SearchLogsRequest) returns (SearchLogsResponse);
+  
+  // Get recent log entries
+  rpc GetRecentLogs(GetRecentLogsRequest) returns (GetRecentLogsResponse);
+  
+  // Stream log entries in real-time
+  rpc StreamLogs(StreamLogsRequest) returns (stream LogEntry);
+}
+
+// Request to search log entries
+message SearchLogsRequest {
+  string tenant_id = 1;
+  string query = 2;
+  string start_date = 3; // ISO 8601 format
+  string end_date = 4; // ISO 8601 format
+  string level = 5;
+  string application = 6;
+  string environment = 7;
+  string server = 8;
+  string component = 9;
+  repeated string tags = 10;
+  int32 page = 11;
+  int32 size = 12;
+}
+
+// Response for log search
+message SearchLogsResponse {
+  bool success = 1;
+  string message = 2;
+  repeated LogEntry log_entries = 3;
+  int64 total_count = 4;
+  int32 page = 5;
+  int32 size = 6;
+  int32 total_pages = 7;
+}
+
+// Request to get recent log entries
+message GetRecentLogsRequest {
+  string tenant_id = 1;
+  int32 count = 2;
+}
+
+// Response for recent logs
+message GetRecentLogsResponse {
+  bool success = 1;
+  string message = 2;
+  repeated LogEntry log_entries = 3;
+}
+
+// Request to stream log entries
+message StreamLogsRequest {
+  string tenant_id = 1;
+  string level_filter = 2;
+  string application_filter = 3;
+  string environment_filter = 4;
+}
+
+// Log entry data
+message LogEntry {
+  string id = 1;
+  string tenant_id = 2;
+  string timestamp = 3;
+  string level = 4;
+  string message = 5;
+  string message_template = 6;
+  LogSource source = 7;
+  string trace_id = 8;
+  string span_id = 9;
+  string user_id = 10;
+  string session_id = 11;
+  string correlation_id = 12;
+  string exception = 13;
+  map<string, string> metadata = 14;
+  string tags = 15;
+  string original_format = 16;
+  int64 size_bytes = 17;
+  string ip_address = 18;
+  string user_agent = 19;
+  bool is_processed = 20;
+  bool is_archived = 21;
+  string created_at = 22;
+}
+
+// Log source information
+message LogSource {
+  string application = 1;
+  string environment = 2;
+  string server = 3;
+  string component = 4;
+}

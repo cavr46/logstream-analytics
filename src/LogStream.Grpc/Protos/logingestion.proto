@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+option csharp_namespace = "LogStream.Grpc.Protos";
+
+package logingestion;
+
+// Log ingestion service
+service LogIngestion {
+  // Ingest a single log entry
+  rpc IngestLog(IngestLogRequest) returns (IngestLogResponse);
+  
+  // Ingest multiple log entries in a batch
+  rpc IngestLogsBatch(IngestLogsBatchRequest) returns (IngestLogsBatchResponse);
+  
+  // Stream log entries for high-throughput scenarios
+  rpc IngestLogsStream(stream IngestLogRequest) returns (IngestLogsStreamResponse);
+}
+
+// Request to ingest a single log entry
+message IngestLogRequest {
+  string tenant_id = 1;
+  string timestamp = 2; // ISO 8601 format
+  string level = 3;
+  string message = 4;
+  string message_template = 5;
+  LogSource source = 6;
+  string trace_id = 7;
+  string span_id = 8;
+  string user_id = 9;
+  string session_id = 10;
+  string correlation_id = 11;
+  string exception = 12;
+  map<string, string> metadata = 13;
+  string tags = 14;
+  string original_format = 15;
+  string raw_content = 16;
+  string ip_address = 17;
+  string user_agent = 18;
+}
+
+// Response for single log ingestion
+message IngestLogResponse {
+  bool success = 1;
+  string message = 2;
+  string log_entry_id = 3;
+}
+
+// Request to ingest multiple log entries
+message IngestLogsBatchRequest {
+  repeated IngestLogRequest log_entries = 1;
+}
+
+// Response for batch log ingestion
+message IngestLogsBatchResponse {
+  bool success = 1;
+  string message = 2;
+  int32 total_requested = 3;
+  int32 successful = 4;
+  int32 failed = 5;
+  repeated string errors = 6;
+  repeated string created_ids = 7;
+}
+
+// Response for streaming log ingestion
+message IngestLogsStreamResponse {
+  bool success = 1;
+  string message = 2;
+  int32 total_processed = 3;
+  int32 successful = 4;
+  int32 failed = 5;
+  repeated string errors = 6;
+}
+
+// Log source information
+message LogSource {
+  string application = 1;
+  string environment = 2;
+  string server = 3;
+  string component = 4;
+}

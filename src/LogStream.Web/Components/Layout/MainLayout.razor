@@ -1,5 +1,7 @@
 @inherits LayoutView
 @inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
 
 <MudLayout>
     <MudAppBar Elevation="1">
@@ -10,10 +12,10 @@
         <MudIconButton Icon="Icons.Material.Filled.Brightness4" Color="Color.Inherit" OnClick="@ToggleDarkMode" />
         <MudIconButton Icon="Icons.Material.Filled.Notifications" Color="Color.Inherit" />
         <MudMenu Icon="Icons.Material.Filled.AccountCircle" Color="Color.Inherit" Direction="Direction.Bottom" OffsetY="true">
-            <MudMenuItem Icon="Icons.Material.Filled.Person">Profile</MudMenuItem>
-            <MudMenuItem Icon="Icons.Material.Filled.Settings">Settings</MudMenuItem>
+            <MudMenuItem Icon="Icons.Material.Filled.Person" OnClick="NavigateToProfile">Profile</MudMenuItem>
+            <MudMenuItem Icon="Icons.Material.Filled.Settings" OnClick="NavigateToSettings">Settings</MudMenuItem>
             <MudDivider />
-            <MudMenuItem Icon="Icons.Material.Filled.Logout">Logout</MudMenuItem>
+            <MudMenuItem Icon="Icons.Material.Filled.Logout" OnClick="HandleLogout">Logout</MudMenuItem>
         </MudMenu>
     </MudAppBar>
     
@@ -42,5 +44,31 @@
     {
         _isDarkMode = !_isDarkMode;
         await JSRuntime.InvokeVoidAsync("toggleDarkMode", _isDarkMode);
+    }
+
+    private void NavigateToProfile()
+    {
+        Navigation.NavigateTo("/profile");
+    }
+
+    private void NavigateToSettings()
+    {
+        Navigation.NavigateTo("/settings");
+    }
+
+    private async Task HandleLogout()
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to logout?");
+        if (confirmed)
+        {
+            // Clear any local storage/session data
+            await JSRuntime.InvokeVoidAsync("localStorage.clear");
+            await JSRuntime.InvokeVoidAsync("sessionStorage.clear");
+            
+            Snackbar.Add("Logged out successfully", Severity.Success);
+            
+            // Navigate to login page
+            Navigation.NavigateTo("/login");
+        }
     }
 }

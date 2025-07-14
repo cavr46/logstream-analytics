@@ -1,0 +1,346 @@
+@page "/alerts"
+@page "/alerts/{TenantId}"
+@using LogStream.Web.Services
+@using LogStream.Web.Models
+@inject IDashboardService DashboardService
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Alerts - LogStream Analytics</PageTitle>
+
+<div class="alerts-container p-md">
+    <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge">
+        <!-- Header -->
+        <MudPaper Elevation="2" Class="pa-4 mb-4 bg-surface rounded-lg">
+            <MudGrid AlignItems="Center">
+                <MudItem xs="12" md="8">
+                    <MudText Typo="Typo.h4" Class="mb-2" role="heading" aria-level="1">
+                        <MudIcon Icon="Icons.Material.Filled.NotificationsActive" Class="mr-2" aria-hidden="true" />
+                        Alert Management
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="text-secondary">
+                        Monitor and manage system alerts • Tenant: @(TenantId ?? "All Tenants")
+                    </MudText>
+                </MudItem>
+                <MudItem xs="12" md="4" Class="d-flex justify-end">
+                    <MudButton StartIcon="Icons.Material.Filled.Add" 
+                              Variant="Variant.Filled" 
+                              Color="Color.Primary"
+                              OnClick="CreateNewAlert"
+                              Class="mr-2">
+                        New Alert
+                    </MudButton>
+                    <MudButton StartIcon="Icons.Material.Filled.Settings" 
+                              Variant="Variant.Outlined" 
+                              Color="Color.Secondary"
+                              OnClick="OpenAlertSettings">
+                        Settings
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <!-- Alert Summary Cards -->
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 bg-gradient-error text-white rounded-lg hover-lift">
+                    <div class="d-flex align-center justify-space-between">
+                        <div>
+                            <MudText Typo="Typo.h4" Class="mb-1">3</MudText>
+                            <MudText Typo="Typo.body2">Critical Alerts</MudText>
+                        </div>
+                        <MudIcon Icon="Icons.Material.Filled.Error" Size="Size.Large" Class="opacity-75" />
+                    </div>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 bg-gradient-warning text-white rounded-lg hover-lift">
+                    <div class="d-flex align-center justify-space-between">
+                        <div>
+                            <MudText Typo="Typo.h4" Class="mb-1">7</MudText>
+                            <MudText Typo="Typo.body2">Warning Alerts</MudText>
+                        </div>
+                        <MudIcon Icon="Icons.Material.Filled.Warning" Size="Size.Large" Class="opacity-75" />
+                    </div>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 bg-gradient-info text-white rounded-lg hover-lift">
+                    <div class="d-flex align-center justify-space-between">
+                        <div>
+                            <MudText Typo="Typo.h4" Class="mb-1">15</MudText>
+                            <MudText Typo="Typo.body2">Info Alerts</MudText>
+                        </div>
+                        <MudIcon Icon="Icons.Material.Filled.Info" Size="Size.Large" Class="opacity-75" />
+                    </div>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 bg-gradient-success text-white rounded-lg hover-lift">
+                    <div class="d-flex align-center justify-space-between">
+                        <div>
+                            <MudText Typo="Typo.h4" Class="mb-1">25</MudText>
+                            <MudText Typo="Typo.body2">Total Rules</MudText>
+                        </div>
+                        <MudIcon Icon="Icons.Material.Filled.Rule" Size="Size.Large" Class="opacity-75" />
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <!-- Alert Filters -->
+        <MudPaper Elevation="2" Class="pa-4 mb-4 bg-surface rounded-lg">
+            <MudGrid AlignItems="Center">
+                <MudItem xs="12" md="3">
+                    <MudSelect @bind-Value="_selectedSeverity" 
+                              Label="Severity" 
+                              Variant="Variant.Outlined" 
+                              Dense="true">
+                        <MudSelectItem Value="@("")">All Severities</MudSelectItem>
+                        <MudSelectItem Value="@("Critical")">Critical</MudSelectItem>
+                        <MudSelectItem Value="@("Warning")">Warning</MudSelectItem>
+                        <MudSelectItem Value="@("Info")">Info</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudSelect @bind-Value="_selectedStatus" 
+                              Label="Status" 
+                              Variant="Variant.Outlined" 
+                              Dense="true">
+                        <MudSelectItem Value="@("")">All Status</MudSelectItem>
+                        <MudSelectItem Value="@("Active")">Active</MudSelectItem>
+                        <MudSelectItem Value="@("Resolved")">Resolved</MudSelectItem>
+                        <MudSelectItem Value="@("Suppressed")">Suppressed</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_searchQuery"
+                                 Label="Search alerts..."
+                                 Variant="Variant.Outlined"
+                                 Dense="true"
+                                 Adornment="Adornment.End"
+                                 AdornmentIcon="Icons.Material.Filled.Search" />
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudButton Variant="Variant.Outlined" 
+                              Color="Color.Primary" 
+                              FullWidth="true"
+                              OnClick="ApplyFilters">
+                        Apply Filters
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <!-- Active Alerts Table -->
+        <MudPaper Elevation="2" Class="pa-4 bg-surface rounded-lg">
+            <div class="d-flex justify-space-between align-center mb-4">
+                <MudText Typo="Typo.h6">Active Alerts</MudText>
+                <MudButton StartIcon="Icons.Material.Filled.Refresh" 
+                          Variant="Variant.Text" 
+                          Color="Color.Primary"
+                          OnClick="RefreshAlerts">
+                    Refresh
+                </MudButton>
+            </div>
+
+            <MudTable Items="_alerts" 
+                     Hover="true" 
+                     Dense="true" 
+                     FixedHeader="true"
+                     Height="400px"
+                     OnRowClick="OnAlertClick">
+                <HeaderContent>
+                    <MudTh>Severity</MudTh>
+                    <MudTh>Alert Name</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh>Service</MudTh>
+                    <MudTh>Triggered</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Severity">
+                        <MudChip Size="Size.Small" 
+                                Color="GetSeverityColor(context.Severity)"
+                                Icon="GetSeverityIcon(context.Severity)">
+                            @context.Severity
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Alert Name">
+                        <MudText Typo="Typo.body2" Class="font-semibold">@context.Name</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Description">
+                        <MudText Typo="Typo.body2">@context.Description</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Service">
+                        <MudText Typo="Typo.body2">@context.Service</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Triggered">
+                        <MudText Typo="Typo.caption">@context.TriggeredAt.ToString("MMM dd, HH:mm")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip Size="Size.Small" 
+                                Color="GetStatusColor(context.Status)"
+                                Variant="Variant.Outlined">
+                            @context.Status
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
+                            <MudIconButton Icon="Icons.Material.Filled.Visibility" 
+                                          Size="Size.Small" 
+                                          Color="Color.Primary"
+                                          OnClick="() => ViewAlert(context)" />
+                            <MudIconButton Icon="Icons.Material.Filled.Edit" 
+                                          Size="Size.Small" 
+                                          Color="Color.Secondary"
+                                          OnClick="() => EditAlert(context)" />
+                            <MudIconButton Icon="Icons.Material.Filled.Close" 
+                                          Size="Size.Small" 
+                                          Color="Color.Error"
+                                          OnClick="() => ResolveAlert(context)" />
+                        </MudButtonGroup>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    </MudContainer>
+</div>
+
+<style>
+    .alerts-container {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+    }
+    
+    .bg-gradient-error {
+        background: linear-gradient(135deg, #f44336 0%, #e53935 100%);
+    }
+    
+    .bg-gradient-warning {
+        background: linear-gradient(135deg, #ff9800 0%, #fb8c00 100%);
+    }
+    
+    .bg-gradient-info {
+        background: linear-gradient(135deg, #2196f3 0%, #1e88e5 100%);
+    }
+    
+    .bg-gradient-success {
+        background: linear-gradient(135deg, #4caf50 0%, #43a047 100%);
+    }
+    
+    .opacity-75 {
+        opacity: 0.75;
+    }
+</style>
+
+@code {
+    [Parameter] public string? TenantId { get; set; }
+
+    private string _selectedSeverity = "";
+    private string _selectedStatus = "";
+    private string _searchQuery = "";
+    private List<AlertModel> _alerts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAlerts();
+    }
+
+    private async Task LoadAlerts()
+    {
+        // Simulate loading alerts
+        await Task.Delay(500);
+        
+        _alerts = new List<AlertModel>
+        {
+            new() { Id = 1, Name = "High CPU Usage", Description = "CPU usage above 90%", Service = "WebApp", Severity = "Critical", Status = "Active", TriggeredAt = DateTime.Now.AddHours(-2) },
+            new() { Id = 2, Name = "Database Connection", Description = "Failed to connect to database", Service = "Database", Severity = "Critical", Status = "Active", TriggeredAt = DateTime.Now.AddHours(-1) },
+            new() { Id = 3, Name = "High Memory Usage", Description = "Memory usage above 85%", Service = "API", Severity = "Warning", Status = "Active", TriggeredAt = DateTime.Now.AddMinutes(-30) },
+            new() { Id = 4, Name = "Slow Response Time", Description = "Response time > 2 seconds", Service = "WebApp", Severity = "Warning", Status = "Active", TriggeredAt = DateTime.Now.AddMinutes(-15) },
+            new() { Id = 5, Name = "Log Volume Spike", Description = "Log volume increased by 200%", Service = "Logger", Severity = "Info", Status = "Active", TriggeredAt = DateTime.Now.AddMinutes(-5) }
+        };
+    }
+
+    private async Task CreateNewAlert()
+    {
+        // Open dialog for creating new alert
+        Snackbar.Add("Create New Alert dialog would open here", Severity.Info);
+    }
+
+    private async Task OpenAlertSettings()
+    {
+        // Open alert settings
+        Snackbar.Add("Alert Settings dialog would open here", Severity.Info);
+    }
+
+    private async Task ApplyFilters()
+    {
+        // Apply filters to alerts
+        Snackbar.Add("Filters applied", Severity.Success);
+    }
+
+    private async Task RefreshAlerts()
+    {
+        await LoadAlerts();
+        Snackbar.Add("Alerts refreshed", Severity.Success);
+    }
+
+    private void OnAlertClick(TableRowClickEventArgs<AlertModel> args)
+    {
+        ViewAlert(args.Item);
+    }
+
+    private async Task ViewAlert(AlertModel alert)
+    {
+        Snackbar.Add($"Viewing alert: {alert.Name}", Severity.Info);
+    }
+
+    private async Task EditAlert(AlertModel alert)
+    {
+        Snackbar.Add($"Editing alert: {alert.Name}", Severity.Info);
+    }
+
+    private async Task ResolveAlert(AlertModel alert)
+    {
+        alert.Status = "Resolved";
+        Snackbar.Add($"Alert '{alert.Name}' resolved", Severity.Success);
+    }
+
+    private Color GetSeverityColor(string severity) => severity switch
+    {
+        "Critical" => Color.Error,
+        "Warning" => Color.Warning,
+        "Info" => Color.Info,
+        _ => Color.Default
+    };
+
+    private string GetSeverityIcon(string severity) => severity switch
+    {
+        "Critical" => Icons.Material.Filled.Error,
+        "Warning" => Icons.Material.Filled.Warning,
+        "Info" => Icons.Material.Filled.Info,
+        _ => Icons.Material.Filled.Circle
+    };
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "Active" => Color.Success,
+        "Resolved" => Color.Default,
+        "Suppressed" => Color.Warning,
+        _ => Color.Default
+    };
+
+    public class AlertModel
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Service { get; set; } = "";
+        public string Severity { get; set; } = "";
+        public string Status { get; set; } = "";
+        public DateTime TriggeredAt { get; set; }
+    }
+}

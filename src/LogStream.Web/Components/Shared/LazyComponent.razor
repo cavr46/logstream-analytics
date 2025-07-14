@@ -1,0 +1,159 @@
+@typeparam TComponent
+@using System.ComponentModel
+
+<div class="lazy-component-container">
+    @if (_isLoading)
+    {
+        <div class="lazy-loading-skeleton">
+            <div class="loading-content">
+                @if (LoadingTemplate != null)
+                {
+                    @LoadingTemplate
+                }
+                else
+                {
+                    <div class="skeleton-loader">
+                        <div class="skeleton-line" style="width: 100%; height: 20px; margin-bottom: 8px;"></div>
+                        <div class="skeleton-line" style="width: 75%; height: 20px; margin-bottom: 8px;"></div>
+                        <div class="skeleton-line" style="width: 50%; height: 20px;"></div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        @if (Component != null)
+        {
+            @Component
+        }
+        else if (ErrorTemplate != null)
+        {
+            @ErrorTemplate
+        }
+        else
+        {
+            <div class="lazy-error">
+                <MudAlert Severity="Severity.Error">
+                    Failed to load component
+                </MudAlert>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .lazy-component-container {
+        position: relative;
+        min-height: 100px;
+    }
+    
+    .lazy-loading-skeleton {
+        padding: 16px;
+        background: var(--surface-color);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .skeleton-loader {
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    .skeleton-line {
+        background: linear-gradient(90deg, 
+            var(--background-color) 25%, 
+            rgba(255, 255, 255, 0.8) 50%, 
+            var(--background-color) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 2s infinite;
+        border-radius: var(--radius-sm);
+    }
+    
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    
+    .lazy-error {
+        padding: 16px;
+    }
+</style>
+
+@code {
+    [Parameter] public RenderFragment? LoadingTemplate { get; set; }
+    [Parameter] public RenderFragment? ErrorTemplate { get; set; }
+    [Parameter] public RenderFragment? Component { get; set; }
+    [Parameter] public Func<Task<RenderFragment?>>? ComponentLoader { get; set; }
+    [Parameter] public int DelayMs { get; set; } = 0;
+    [Parameter] public bool LoadOnVisible { get; set; } = false;
+    [Parameter] public string? IntersectionRootMargin { get; set; } = "0px";
+
+    private bool _isLoading = true;
+    private bool _hasLoaded = false;
+    private ElementReference _containerRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!LoadOnVisible)
+        {
+            await LoadComponent();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && LoadOnVisible)
+        {
+            await SetupIntersectionObserver();
+        }
+    }
+
+    private async Task LoadComponent()
+    {
+        if (_hasLoaded) return;
+
+        _hasLoaded = true;
+        
+        if (DelayMs > 0)
+        {
+            await Task.Delay(DelayMs);
+        }
+
+        try
+        {
+            if (ComponentLoader != null)
+            {
+                Component = await ComponentLoader();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading component: {ex.Message}");
+            Component = null;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SetupIntersectionObserver()
+    {
+        await JSRuntime.InvokeVoidAsync("window.setupIntersectionObserver", 
+            _containerRef, 
+            DotNetObjectReference.Create(this),
+            IntersectionRootMargin);
+    }
+
+    [JSInvokable]
+    public async Task OnIntersecting()
+    {
+        await LoadComponent();
+    }
+
+    public void Dispose()
+    {
+        // Cleanup intersection observer if needed
+    }
+}

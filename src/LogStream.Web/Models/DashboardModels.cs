@@ -9,6 +9,10 @@ public class DashboardViewModel
     public IList<Application> TopApplications { get; set; } = new List<Application>();
     public IList<RecentLogEntry> RecentLogs { get; set; } = new List<RecentLogEntry>();
     public IList<Alert> ActiveAlerts { get; set; } = new List<Alert>();
+    public IList<LogLevelDistribution> LogLevelDistribution { get; set; } = new List<LogLevelDistribution>();
+    public IList<LogVolumeTrend> LogVolumeTrends { get; set; } = new List<LogVolumeTrend>();
+    public IList<SystemHealthStatus> SystemHealth { get; set; } = new List<SystemHealthStatus>();
+    public IList<TopErrorMessage> TopErrors { get; set; } = new List<TopErrorMessage>();
 }
 
 public class DashboardMetrics
@@ -24,6 +28,9 @@ public class DashboardMetrics
     public int ActiveApplications { get; set; }
     public int ActiveEnvironments { get; set; }
     public DateTime LastLogReceived { get; set; }
+    public double LogsTrendPercentage { get; set; }
+    public double ErrorTrendPercentage { get; set; }
+    public long LogsPerSecond { get; set; }
 }
 
 public class LogLevel
@@ -42,6 +49,7 @@ public class Application
     public long ErrorCount { get; set; }
     public DateTime LastSeen { get; set; }
     public string Status { get; set; } = "Active";
+    public double AverageResponseTime { get; set; }
 }
 
 public class RecentLogEntry
@@ -94,4 +102,38 @@ public class TimeSeriesDataPoint
     public DateTime Timestamp { get; set; }
     public double Value { get; set; }
     public string Series { get; set; } = string.Empty;
+}
+
+public class LogLevelDistribution
+{
+    public string Level { get; set; } = string.Empty;
+    public long Count { get; set; }
+    public double Percentage { get; set; }
+}
+
+public class LogVolumeTrend
+{
+    public DateTime Timestamp { get; set; }
+    public long TotalLogs { get; set; }
+    public long ErrorLogs { get; set; }
+    public long WarningLogs { get; set; }
+    public long InfoLogs { get; set; }
+}
+
+public class SystemHealthStatus
+{
+    public string ServiceName { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty; // Healthy, Degraded, Unhealthy
+    public double ResponseTime { get; set; }
+    public DateTime LastCheck { get; set; }
+    public string? ErrorMessage { get; set; }
+}
+
+public class TopErrorMessage
+{
+    public string Message { get; set; } = string.Empty;
+    public long Count { get; set; }
+    public DateTime LastOccurrence { get; set; }
+    public string Application { get; set; } = string.Empty;
+    public string Environment { get; set; } = string.Empty;
 }

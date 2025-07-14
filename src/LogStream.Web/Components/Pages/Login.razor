@@ -1,0 +1,466 @@
+@page "/login"
+@layout EmptyLayout
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.OpenIdConnect
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject IConfiguration Configuration
+
+<PageTitle>Login - LogStream Analytics</PageTitle>
+
+<style>
+    .login-container {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+    
+    .login-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 40px;
+        max-width: 400px;
+        width: 100%;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        animation: slideInUp 0.5s ease-out;
+    }
+    
+    @keyframes slideInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .logo-container {
+        text-align: center;
+        margin-bottom: 32px;
+    }
+    
+    .logo-icon {
+        font-size: 4rem;
+        color: #667eea;
+        margin-bottom: 16px;
+    }
+    
+    .welcome-text {
+        color: #666;
+        margin-bottom: 32px;
+        text-align: center;
+        line-height: 1.6;
+    }
+    
+    .login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+    
+    .social-login {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    
+    .social-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 12px 24px;
+        border-radius: 8px;
+        border: 2px solid #e0e0e0;
+        background: white;
+        color: #333;
+        text-decoration: none;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .social-button:hover {
+        border-color: #667eea;
+        background: #f8f9ff;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+    }
+    
+    .microsoft-button {
+        border-color: #0078d4;
+        color: #0078d4;
+    }
+    
+    .microsoft-button:hover {
+        background: #f0f6ff;
+        border-color: #106ebe;
+    }
+    
+    .google-button {
+        border-color: #db4437;
+        color: #db4437;
+    }
+    
+    .google-button:hover {
+        background: #fef7f7;
+        border-color: #c23321;
+    }
+    
+    .divider {
+        position: relative;
+        text-align: center;
+        margin: 24px 0;
+        color: #999;
+    }
+    
+    .divider::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: #e0e0e0;
+        z-index: 1;
+    }
+    
+    .divider span {
+        background: white;
+        padding: 0 16px;
+        position: relative;
+        z-index: 2;
+    }
+    
+    .features-list {
+        margin-top: 32px;
+        padding-top: 24px;
+        border-top: 1px solid #e0e0e0;
+    }
+    
+    .feature-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        color: #666;
+        font-size: 14px;
+    }
+    
+    .feature-icon {
+        color: #4caf50;
+        font-size: 16px;
+    }
+    
+    .demo-notice {
+        background: #f0f6ff;
+        border: 1px solid #e3f2fd;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 24px;
+        text-align: center;
+        color: #1976d2;
+        font-size: 14px;
+    }
+    
+    .system-status {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+    }
+    
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+    
+    .loading-content {
+        text-align: center;
+        color: #667eea;
+    }
+    
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    @media (max-width: 480px) {
+        .login-card {
+            padding: 24px;
+            margin: 10px;
+        }
+        
+        .logo-icon {
+            font-size: 3rem;
+        }
+    }
+</style>
+
+<div class="login-container">
+    <!-- System Status Indicator -->
+    <div class="system-status">
+        <MudChip Icon="Icons.Material.Filled.Circle" 
+                Color="Color.Success" 
+                Size="Size.Small"
+                Variant="Variant.Filled">
+            System Online
+        </MudChip>
+    </div>
+
+    <div class="login-card">
+        <div class="logo-container">
+            <div class="logo-icon">📊</div>
+            <MudText Typo="Typo.h4" Class="mb-2" Style="color: #333; font-weight: 600;">
+                LogStream Analytics
+            </MudText>
+            <MudText Typo="Typo.subtitle1" Style="color: #667eea; font-weight: 500;">
+                Advanced Log Management Platform
+            </MudText>
+        </div>
+
+        <div class="welcome-text">
+            <MudText Typo="Typo.body1">
+                Welcome back! Please sign in to access your log analytics dashboard and monitoring tools.
+            </MudText>
+        </div>
+
+        <!-- Demo Notice -->
+        <div class="demo-notice">
+            <MudIcon Icon="Icons.Material.Filled.Info" Size="Size.Small" Class="mr-2" />
+            Demo Mode: Use any of the login options below to explore the platform
+        </div>
+
+        <div class="login-form">
+            <!-- Social Login Options -->
+            <div class="social-login">
+                <a href="/login/microsoft" class="social-button microsoft-button">
+                    <MudIcon Icon="Icons.Custom.Brands.Microsoft" Size="Size.Medium" />
+                    <span>Continue with Microsoft</span>
+                </a>
+                
+                <a href="/login/google" class="social-button google-button">
+                    <MudIcon Icon="Icons.Custom.Brands.Google" Size="Size.Medium" />
+                    <span>Continue with Google</span>
+                </a>
+            </div>
+
+            <div class="divider">
+                <span>or</span>
+            </div>
+
+            <!-- Direct Login Form -->
+            <MudTextField @bind-Value="_email"
+                         Label="Email Address"
+                         Variant="Variant.Outlined"
+                         InputType="InputType.Email"
+                         Adornment="Adornment.Start"
+                         AdornmentIcon="Icons.Material.Filled.Email"
+                         Required="true"
+                         HelperText="Enter your corporate email address" />
+
+            <MudTextField @bind-Value="_password"
+                         Label="Password"
+                         Variant="Variant.Outlined"
+                         InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                         Adornment="Adornment.End"
+                         AdornmentIcon="@(_showPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                         OnAdornmentClick="TogglePasswordVisibility"
+                         Required="true"
+                         HelperText="Minimum 8 characters required" />
+
+            <div class="d-flex justify-space-between align-center">
+                <MudCheckBox @bind-Checked="_rememberMe" 
+                            Label="Remember me" 
+                            Color="Color.Primary" />
+                <MudLink Href="/forgot-password" Color="Color.Primary">
+                    Forgot Password?
+                </MudLink>
+            </div>
+
+            <MudButton Variant="Variant.Filled" 
+                      Color="Color.Primary" 
+                      StartIcon="Icons.Material.Filled.Login"
+                      Size="Size.Large"
+                      FullWidth="true"
+                      OnClick="HandleDirectLogin"
+                      Disabled="_isLoading">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    <span class="ml-2">Signing in...</span>
+                }
+                else
+                {
+                    <span>Sign In</span>
+                }
+            </MudButton>
+
+            <!-- Demo Login Button -->
+            <MudButton Variant="Variant.Outlined" 
+                      Color="Color.Secondary" 
+                      StartIcon="Icons.Material.Filled.Preview"
+                      Size="Size.Large"
+                      FullWidth="true"
+                      OnClick="HandleDemoLogin">
+                Demo Login (No Authentication)
+            </MudButton>
+        </div>
+
+        <!-- Features List -->
+        <div class="features-list">
+            <MudText Typo="Typo.subtitle2" Class="mb-3" Style="color: #333;">
+                Platform Features:
+            </MudText>
+            
+            <div class="feature-item">
+                <MudIcon Icon="Icons.Material.Filled.Dashboard" Class="feature-icon" />
+                <span>Real-time log monitoring dashboard</span>
+            </div>
+            
+            <div class="feature-item">
+                <MudIcon Icon="Icons.Material.Filled.Search" Class="feature-icon" />
+                <span>Advanced search and filtering</span>
+            </div>
+            
+            <div class="feature-item">
+                <MudIcon Icon="Icons.Material.Filled.Timeline" Class="feature-icon" />
+                <span>Log correlation and tracing</span>
+            </div>
+            
+            <div class="feature-item">
+                <MudIcon Icon="Icons.Material.Filled.Notifications" Class="feature-icon" />
+                <span>Intelligent alerting system</span>
+            </div>
+            
+            <div class="feature-item">
+                <MudIcon Icon="Icons.Material.Filled.Analytics" Class="feature-icon" />
+                <span>Advanced analytics and reporting</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+@if (_isLoading)
+{
+    <div class="loading-overlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <MudText Typo="Typo.h6">Authenticating...</MudText>
+            <MudText Typo="Typo.body2" Class="text-secondary">
+                Please wait while we verify your credentials
+            </MudText>
+        </div>
+    </div>
+}
+
+@code {
+    private string _email = "";
+    private string _password = "";
+    private bool _rememberMe = false;
+    private bool _showPassword = false;
+    private bool _isLoading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user is already authenticated
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            Navigation.NavigateTo("/dashboard");
+        }
+        
+        // Auto-focus email field
+        await Task.Delay(100);
+        await JSRuntime.InvokeVoidAsync("focusElement", "email-input");
+    }
+
+    private void TogglePasswordVisibility()
+    {
+        _showPassword = !_showPassword;
+    }
+
+    private async Task HandleDirectLogin()
+    {
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            await JSRuntime.InvokeVoidAsync("showToast", "Please enter both email and password", "error");
+            return;
+        }
+
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Simulate authentication delay
+            await Task.Delay(2000);
+
+            // In a real implementation, you would validate credentials here
+            // For demo purposes, we'll accept any email/password combination
+            if (_email.Contains("@") && _password.Length >= 8)
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Login successful! Redirecting...", "success");
+                await Task.Delay(1000);
+                Navigation.NavigateTo("/dashboard");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Invalid credentials. Please try again.", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("showToast", $"Login failed: {ex.Message}", "error");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleDemoLogin()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(1000);
+            await JSRuntime.InvokeVoidAsync("showToast", "Demo login successful! Welcome to LogStream Analytics", "success");
+            await Task.Delay(500);
+            Navigation.NavigateTo("/dashboard");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

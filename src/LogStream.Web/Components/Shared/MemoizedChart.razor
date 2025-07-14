@@ -1,0 +1,198 @@
+@using System.Text.Json
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div class="memoized-chart-container">
+    <canvas id="@ChartId" class="chart-canvas"></canvas>
+</div>
+
+<style>
+    .memoized-chart-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+    
+    .chart-canvas {
+        width: 100% !important;
+        height: 100% !important;
+    }
+</style>
+
+@code {
+    [Parameter] public string ChartId { get; set; } = Guid.NewGuid().ToString("N");
+    [Parameter] public string ChartType { get; set; } = "line";
+    [Parameter] public object? Data { get; set; }
+    [Parameter] public object? Options { get; set; }
+    [Parameter] public bool AutoUpdate { get; set; } = true;
+    [Parameter] public int UpdateIntervalMs { get; set; } = 1000;
+    
+    private string? _lastDataHash;
+    private string? _lastOptionsHash;
+    private bool _chartInitialized = false;
+    private Timer? _updateTimer;
+    private bool _disposed = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeChart();
+        }
+        else
+        {
+            await UpdateChartIfNeeded();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_chartInitialized)
+        {
+            await UpdateChartIfNeeded();
+        }
+    }
+
+    private async Task InitializeChart()
+    {
+        if (_disposed) return;
+
+        try
+        {
+            var dataHash = CalculateHash(Data);
+            var optionsHash = CalculateHash(Options);
+
+            await JSRuntime.InvokeVoidAsync("window.initializeChart", 
+                ChartId, 
+                ChartType, 
+                Data, 
+                Options ?? new { responsive = true, maintainAspectRatio = false });
+
+            _lastDataHash = dataHash;
+            _lastOptionsHash = optionsHash;
+            _chartInitialized = true;
+
+            if (AutoUpdate)
+            {
+                StartUpdateTimer();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing chart {ChartId}: {ex.Message}");
+        }
+    }
+
+    private async Task UpdateChartIfNeeded()
+    {
+        if (_disposed || !_chartInitialized) return;
+
+        var dataHash = CalculateHash(Data);
+        var optionsHash = CalculateHash(Options);
+
+        var dataChanged = dataHash != _lastDataHash;
+        var optionsChanged = optionsHash != _lastOptionsHash;
+
+        if (dataChanged || optionsChanged)
+        {
+            try
+            {
+                if (dataChanged)
+                {
+                    await JSRuntime.InvokeVoidAsync("window.updateChartData", ChartId, Data);
+                    _lastDataHash = dataHash;
+                }
+
+                if (optionsChanged)
+                {
+                    await JSRuntime.InvokeVoidAsync("window.updateChartOptions", ChartId, Options);
+                    _lastOptionsHash = optionsHash;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating chart {ChartId}: {ex.Message}");
+            }
+        }
+    }
+
+    private void StartUpdateTimer()
+    {
+        _updateTimer = new Timer(async _ =>
+        {
+            if (!_disposed)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await UpdateChartIfNeeded();
+                });
+            }
+        }, null, UpdateIntervalMs, UpdateIntervalMs);
+    }
+
+    private string? CalculateHash(object? obj)
+    {
+        if (obj == null) return null;
+
+        try
+        {
+            var json = JsonSerializer.Serialize(obj);
+            return json.GetHashCode().ToString();
+        }
+        catch
+        {
+            return obj.GetHashCode().ToString();
+        }
+    }
+
+    public async Task RefreshChart()
+    {
+        if (_disposed || !_chartInitialized) return;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("window.refreshChart", ChartId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing chart {ChartId}: {ex.Message}");
+        }
+    }
+
+    public async Task DestroyChart()
+    {
+        if (_disposed || !_chartInitialized) return;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("window.destroyChart", ChartId);
+            _chartInitialized = false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error destroying chart {ChartId}: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _updateTimer?.Dispose();
+        
+        if (_chartInitialized)
+        {
+            // Schedule chart destruction
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("window.destroyChart", ChartId);
+                }
+                catch
+                {
+                    // Ignore errors during disposal
+                }
+            });
+        }
+    }
+}

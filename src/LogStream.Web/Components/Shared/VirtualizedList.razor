@@ -1,0 +1,198 @@
+@typeparam TItem
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@inject IJSRuntime JSRuntime
+
+<div class="virtualized-list-container" style="height: @Height;">
+    <Virtualize Items="@Items" 
+                Context="item" 
+                ItemSize="@ItemSize"
+                OverscanCount="@OverscanCount"
+                SpacerElement="@SpacerElement">
+        <ItemContent>
+            @if (ItemTemplate != null)
+            {
+                @ItemTemplate(item)
+            }
+            else
+            {
+                <div class="virtualized-item-default">
+                    @item?.ToString()
+                </div>
+            }
+        </ItemContent>
+        <Placeholder>
+            <div class="virtualized-placeholder animate-pulse">
+                <div class="placeholder-content">
+                    @if (PlaceholderTemplate != null)
+                    {
+                        @PlaceholderTemplate
+                    }
+                    else
+                    {
+                        <div class="skeleton-line" style="width: 100%; height: 20px; margin-bottom: 8px;"></div>
+                        <div class="skeleton-line" style="width: 75%; height: 16px; margin-bottom: 4px;"></div>
+                        <div class="skeleton-line" style="width: 50%; height: 16px;"></div>
+                    }
+                </div>
+            </div>
+        </Placeholder>
+    </Virtualize>
+</div>
+
+<style>
+    .virtualized-list-container {
+        width: 100%;
+        overflow-y: auto;
+        background: var(--surface-color);
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    
+    .virtualized-item-default {
+        padding: var(--spacing-md);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        font-family: var(--font-family-primary);
+        font-size: var(--font-size-sm);
+        line-height: var(--line-height-normal);
+        transition: background-color var(--transition-fast);
+    }
+    
+    .virtualized-item-default:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
+    
+    .virtualized-placeholder {
+        padding: var(--spacing-md);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        background: var(--surface-variant);
+    }
+    
+    .placeholder-content {
+        opacity: 0.7;
+    }
+    
+    .skeleton-line {
+        background: linear-gradient(90deg, 
+            rgba(0, 0, 0, 0.05) 25%, 
+            rgba(0, 0, 0, 0.1) 50%, 
+            rgba(0, 0, 0, 0.05) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 2s infinite;
+        border-radius: var(--radius-sm);
+    }
+    
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    
+    .animate-pulse {
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+    }
+    
+    /* Dark theme adjustments */
+    .dark-theme .virtualized-list-container {
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+    
+    .dark-theme .virtualized-item-default {
+        border-bottom-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .dark-theme .virtualized-item-default:hover {
+        background-color: rgba(255, 255, 255, 0.02);
+    }
+    
+    .dark-theme .virtualized-placeholder {
+        border-bottom-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .dark-theme .skeleton-line {
+        background: linear-gradient(90deg, 
+            rgba(255, 255, 255, 0.05) 25%, 
+            rgba(255, 255, 255, 0.1) 50%, 
+            rgba(255, 255, 255, 0.05) 75%);
+        background-size: 200% 100%;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .virtualized-item-default {
+            padding: var(--spacing-sm);
+            font-size: var(--font-size-xs);
+        }
+        
+        .virtualized-placeholder {
+            padding: var(--spacing-sm);
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public ICollection<TItem> Items { get; set; } = new List<TItem>();
+    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }
+    [Parameter] public RenderFragment? PlaceholderTemplate { get; set; }
+    [Parameter] public string Height { get; set; } = "400px";
+    [Parameter] public float ItemSize { get; set; } = 50f;
+    [Parameter] public int OverscanCount { get; set; } = 3;
+    [Parameter] public string SpacerElement { get; set; } = "div";
+    [Parameter] public EventCallback<TItem> OnItemClick { get; set; }
+    [Parameter] public Func<TItem, string>? ItemKeySelector { get; set; }
+    [Parameter] public string? EmptyText { get; set; } = "No items to display";
+    [Parameter] public bool ShowEmptyState { get; set; } = true;
+
+    private bool _isLoading = false;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        
+        // Auto-adjust item size for mobile
+        if (ItemSize == 50f)
+        {
+            // This would be better with a proper responsive service
+            ItemSize = 45f; // Slightly smaller for mobile
+        }
+    }
+
+    private async Task HandleItemClick(TItem item)
+    {
+        if (OnItemClick.HasDelegate)
+        {
+            await OnItemClick.InvokeAsync(item);
+        }
+    }
+
+    private string GetItemKey(TItem item)
+    {
+        if (ItemKeySelector != null)
+        {
+            return ItemKeySelector(item);
+        }
+        
+        return item?.GetHashCode().ToString() ?? Guid.NewGuid().ToString();
+    }
+
+    public async Task ScrollToTop()
+    {
+        await JSRuntime.InvokeVoidAsync("window.scrollVirtualizedListToTop", 
+            $".virtualized-list-container");
+    }
+
+    public async Task ScrollToBottom()
+    {
+        await JSRuntime.InvokeVoidAsync("window.scrollVirtualizedListToBottom", 
+            $".virtualized-list-container");
+    }
+
+    public async Task ScrollToItem(int index)
+    {
+        await JSRuntime.InvokeVoidAsync("window.scrollVirtualizedListToItem", 
+            $".virtualized-list-container", index, ItemSize);
+    }
+}

@@ -1,0 +1,989 @@
+@page "/search"
+@page "/search/{TenantId}"
+@using LogStream.Web.Services
+@using LogStream.Web.Models
+@using System.Text.Json
+@inject ISearchService SearchService
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@implements IDisposable
+
+<PageTitle>Advanced Search - LogStream Analytics</PageTitle>
+
+<style>
+    .search-container {
+        padding: 16px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+    }
+    
+    .search-header {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    .query-builder {
+        background: rgba(255, 255, 255, 0.98);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    }
+    
+    .search-input {
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+    
+    .filter-chip {
+        margin: 2px;
+        animation: slideInUp 0.3s ease-out;
+    }
+    
+    @keyframes slideInUp {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .log-result {
+        background: #1e1e1e;
+        color: #e0e0e0;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 12px;
+        line-height: 1.4;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        overflow: hidden;
+        transition: all 0.2s ease;
+    }
+    
+    .log-result:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+    
+    .log-timestamp { color: #888; }
+    .log-level-trace { color: #9e9e9e; }
+    .log-level-debug { color: #2196f3; }
+    .log-level-info { color: #4caf50; }
+    .log-level-warn { color: #ff9800; }
+    .log-level-error { color: #f44336; }
+    .log-level-fatal { color: #9c27b0; }
+    .log-app { color: #4fc3f7; }
+    .log-host { color: #ffb74d; }
+    
+    .search-stats {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin: 16px 0;
+        padding: 12px 16px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        backdrop-filter: blur(5px);
+        color: white;
+    }
+    
+    .saved-search-item {
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .saved-search-item:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+    
+    .histogram-container {
+        height: 120px;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+    
+    .suggestion-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+        transition: background-color 0.2s;
+    }
+    
+    .suggestion-item:hover {
+        background-color: #f5f5f5;
+    }
+    
+    .search-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        color: #666;
+    }
+</style>
+
+<div class="search-container">
+    <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge">
+        <!-- Search Header -->
+        <div class="search-header">
+            <MudGrid AlignItems="Center">
+                <MudItem xs="12" md="8">
+                    <MudText Typo="Typo.h4" Class="mb-2">
+                        <MudIcon Icon="Icons.Material.Filled.Search" Class="mr-2" />
+                        Advanced Log Search
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="text-secondary">
+                        Search across @_totalLogsIndexed.ToString("N0") logs • 
+                        Tenant: @(TenantId ?? "All Tenants") • 
+                        Real-time indexing
+                    </MudText>
+                </MudItem>
+                <MudItem xs="12" md="4" Class="d-flex justify-end">
+                    <MudButton StartIcon="Icons.Material.Filled.Bookmark" 
+                              Variant="Variant.Outlined" 
+                              Color="Color.Primary"
+                              OnClick="OpenSavedSearches"
+                              Class="mr-2">
+                        Saved Searches
+                    </MudButton>
+                    <MudButton StartIcon="Icons.Material.Filled.Download" 
+                              Variant="Variant.Filled" 
+                              Color="Color.Success"
+                              OnClick="ExportResults"
+                              Disabled="!_searchResults.Any()">
+                        Export
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </div>
+
+        <!-- Query Builder -->
+        <div class="query-builder">
+            <MudGrid>
+                <!-- Main Search Input -->
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_currentQuery"
+                                 Label="Search Query"
+                                 Placeholder="e.g., level:ERROR AND application:WebApp AND message:*database*"
+                                 Variant="Variant.Outlined"
+                                 Class="search-input"
+                                 Adornment="Adornment.End"
+                                 AdornmentIcon="Icons.Material.Filled.Search"
+                                 OnAdornmentClick="ExecuteSearch"
+                                 OnKeyPress="OnSearchKeyPress"
+                                 HelperText="Supports Lucene syntax: field:value, AND, OR, NOT, wildcards (*), ranges ([start TO end])"
+                                 Immediate="true">
+                        <MudInputAdornment Adornment="Adornment.End">
+                            <MudIconButton Icon="Icons.Material.Filled.Search" 
+                                          Color="Color.Primary" 
+                                          OnClick="ExecuteSearch" />
+                            <MudIconButton Icon="Icons.Material.Filled.Help" 
+                                          Color="Color.Default" 
+                                          OnClick="ShowQueryHelp" />
+                        </MudInputAdornment>
+                    </MudTextField>
+                </MudItem>
+
+                <!-- Quick Filters -->
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Quick Filters:</MudText>
+                    <div class="d-flex flex-wrap">
+                        @foreach (var filter in _appliedFilters)
+                        {
+                            <MudChip Text="@filter.Display" 
+                                    Icon="@filter.Icon" 
+                                    Color="@filter.Color"
+                                    Class="filter-chip"
+                                    OnClose="() => RemoveFilter(filter)"
+                                    CloseIcon="Icons.Material.Filled.Close" />
+                        }
+                    </div>
+                </MudItem>
+
+                <!-- Filter Controls -->
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect @bind-Value="_selectedLevel" 
+                              Label="Log Level" 
+                              Variant="Variant.Outlined" 
+                              Dense="true"
+                              T="string">
+                        <MudSelectItem Value="@("")">All Levels</MudSelectItem>
+                        <MudSelectItem Value="@("TRACE")">TRACE</MudSelectItem>
+                        <MudSelectItem Value="@("DEBUG")">DEBUG</MudSelectItem>
+                        <MudSelectItem Value="@("INFO")">INFO</MudSelectItem>
+                        <MudSelectItem Value="@("WARN")">WARN</MudSelectItem>
+                        <MudSelectItem Value="@("ERROR")">ERROR</MudSelectItem>
+                        <MudSelectItem Value="@("FATAL")">FATAL</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="3">
+                    <MudAutocomplete T="string" 
+                                    @bind-Value="_selectedApplication"
+                                    Label="Application"
+                                    SearchFunc="SearchApplications"
+                                    Variant="Variant.Outlined"
+                                    Dense="true"
+                                    Clearable="true" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect @bind-Value="_selectedEnvironment" 
+                              Label="Environment" 
+                              Variant="Variant.Outlined" 
+                              Dense="true"
+                              T="string">
+                        <MudSelectItem Value="@("")">All Environments</MudSelectItem>
+                        <MudSelectItem Value="@("Production")">Production</MudSelectItem>
+                        <MudSelectItem Value="@("Staging")">Staging</MudSelectItem>
+                        <MudSelectItem Value="@("Development")">Development</MudSelectItem>
+                        <MudSelectItem Value="@("Test")">Test</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="3">
+                    <MudDateRangePicker @bind-DateRange="_dateRange"
+                                       Label="Time Range"
+                                       Variant="Variant.Outlined"
+                                       Dense="true" />
+                </MudItem>
+
+                <!-- Advanced Options -->
+                <MudItem xs="12">
+                    <MudExpansionPanels>
+                        <MudExpansionPanel IsInitiallyExpanded="false">
+                            <TitleContent>
+                                <div class="d-flex align-center">
+                                    <MudIcon Icon="Icons.Material.Filled.Tune" Class="mr-2" />
+                                    Advanced Options
+                                </div>
+                            </TitleContent>
+                            <ChildContent>
+                                <MudGrid>
+                                    <MudItem xs="12" sm="6" md="3">
+                                        <MudAutocomplete T="string" 
+                                                        @bind-Value="_selectedHost"
+                                                        Label="Host/Server"
+                                                        SearchFunc="SearchHosts"
+                                                        Variant="Variant.Outlined"
+                                                        Dense="true"
+                                                        Clearable="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6" md="3">
+                                        <MudTextField @bind-Value="_correlationId"
+                                                     Label="Correlation ID"
+                                                     Variant="Variant.Outlined"
+                                                     Dense="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6" md="3">
+                                        <MudNumericField @bind-Value="_maxResults"
+                                                        Label="Max Results"
+                                                        Variant="Variant.Outlined"
+                                                        Dense="true"
+                                                        Min="1"
+                                                        Max="10000" />
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6" md="3">
+                                        <MudSwitch @bind-Checked="_includeStackTrace" 
+                                                  Label="Include Stack Traces" 
+                                                  Color="Color.Primary" />
+                                    </MudItem>
+                                </MudGrid>
+                            </ChildContent>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                </MudItem>
+
+                <!-- Search Actions -->
+                <MudItem xs="12" Class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudButton StartIcon="Icons.Material.Filled.Search" 
+                                  Variant="Variant.Filled" 
+                                  Color="Color.Primary"
+                                  OnClick="ExecuteSearch"
+                                  Class="mr-2">
+                            Search Logs
+                        </MudButton>
+                        <MudButton StartIcon="Icons.Material.Filled.Clear" 
+                                  Variant="Variant.Outlined" 
+                                  Color="Color.Default"
+                                  OnClick="ClearSearch"
+                                  Class="mr-2">
+                            Clear
+                        </MudButton>
+                        <MudButton StartIcon="Icons.Material.Filled.Bookmark" 
+                                  Variant="Variant.Text" 
+                                  Color="Color.Secondary"
+                                  OnClick="SaveCurrentSearch"
+                                  Disabled="string.IsNullOrEmpty(_currentQuery)">
+                            Save Search
+                        </MudButton>
+                    </div>
+                    <div>
+                        <MudSwitch @bind-Checked="_realTimeSearch" 
+                                  Label="Real-time" 
+                                  Color="Color.Success" />
+                    </div>
+                </MudItem>
+            </MudGrid>
+        </div>
+
+        <!-- Search Results -->
+        @if (_isSearching)
+        {
+            <div class="search-loading">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" Class="mr-3" />
+                <MudText>Searching through logs...</MudText>
+            </div>
+        }
+        else if (_searchResults.Any())
+        {
+            <!-- Results Stats -->
+            <div class="search-stats">
+                <MudIcon Icon="Icons.Material.Filled.QueryStats" />
+                <MudText>Found <strong>@_totalResults.ToString("N0")</strong> results in <strong>@_searchDurationMs ms</strong></MudText>
+                <MudSpacer />
+                <MudText>Showing @_searchResults.Count() of @_totalResults</MudText>
+                @if (_realTimeSearch)
+                {
+                    <MudChip Icon="Icons.Material.Filled.Circle" 
+                            Color="Color.Success" 
+                            Size="Size.Small">LIVE</MudChip>
+                }
+            </div>
+
+            <!-- Log Volume Histogram -->
+            <div class="histogram-container">
+                <canvas id="searchHistogram"></canvas>
+            </div>
+
+            <!-- Results Table -->
+            <MudPaper Elevation="2" Class="pa-4">
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudText Typo="Typo.h6">Search Results</MudText>
+                    <div>
+                        <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
+                            <MudButton StartIcon="Icons.Material.Filled.ViewList"
+                                      Color="@(_viewMode == "table" ? Color.Primary : Color.Default)"
+                                      OnClick="() => SetViewMode(\"table\")">Table</MudButton>
+                            <MudButton StartIcon="Icons.Material.Filled.Code"
+                                      Color="@(_viewMode == "raw" ? Color.Primary : Color.Default)"
+                                      OnClick="() => SetViewMode(\"raw\")">Raw</MudButton>
+                            <MudButton StartIcon="Icons.Material.Filled.Timeline"
+                                      Color="@(_viewMode == "timeline" ? Color.Primary : Color.Default)"
+                                      OnClick="() => SetViewMode(\"timeline\")">Timeline</MudButton>
+                        </MudButtonGroup>
+                    </div>
+                </div>
+
+                @if (_viewMode == "table")
+                {
+                    <MudTable Items="_searchResults" 
+                             Hover="true" 
+                             Dense="true" 
+                             FixedHeader="true" 
+                             Height="600px"
+                             OnRowClick="OnLogRowClick">
+                        <HeaderContent>
+                            <MudTh>Time</MudTh>
+                            <MudTh>Level</MudTh>
+                            <MudTh>Application</MudTh>
+                            <MudTh>Host</MudTh>
+                            <MudTh>Message</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Time">
+                                <MudText Typo="Typo.caption" Class="log-timestamp">
+                                    @context.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff")
+                                </MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Level">
+                                <MudChip Size="Size.Small" 
+                                        Color="GetLogLevelColor(context.Level)"
+                                        Icon="GetLogLevelIcon(context.Level)">
+                                    @context.Level
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Application">
+                                <MudText Typo="Typo.body2">@context.Application</MudText>
+                                <MudText Typo="Typo.caption" Class="text-secondary">@context.Environment</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Host">
+                                <MudText Typo="Typo.body2">@context.Host</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Message">
+                                <div style="max-width: 400px;">
+                                    <MudText Typo="Typo.body2" Class="text-truncate">
+                                        @HighlightSearchTerms(context.Message)
+                                    </MudText>
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="Actions">
+                                <MudIconButton Icon="Icons.Material.Filled.Visibility" 
+                                              Size="Size.Small" 
+                                              OnClick="() => ViewLogDetails(context)" />
+                                <MudIconButton Icon="Icons.Material.Filled.Timeline" 
+                                              Size="Size.Small" 
+                                              OnClick="() => ShowCorrelatedLogs(context)" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else if (_viewMode == "raw")
+                {
+                    <div style="max-height: 600px; overflow-y: auto;">
+                        @foreach (var log in _searchResults)
+                        {
+                            <div class="log-result pa-3">
+                                <span class="log-timestamp">[@log.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff")]</span>
+                                <span class="@GetLogLevelCssClass(log.Level)">[@log.Level]</span>
+                                <span class="log-app">[@log.Application]</span>
+                                <span class="log-host">[@log.Host]</span>
+                                <div class="mt-1">@log.Message</div>
+                                @if (!string.IsNullOrEmpty(log.Exception))
+                                {
+                                    <div class="mt-2 pa-2" style="background: rgba(244, 67, 54, 0.1); border-left: 3px solid #f44336;">
+                                        <pre style="margin: 0; white-space: pre-wrap;">@log.Exception</pre>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                else if (_viewMode == "timeline")
+                {
+                    <MudTimeline>
+                        @foreach (var log in _searchResults.Take(20))
+                        {
+                            <MudTimelineItem Color="GetLogLevelTimelineColor(log.Level)" Size="Size.Small">
+                                <div>
+                                    <div class="d-flex align-center mb-1">
+                                        <MudChip Size="Size.Small" Color="GetLogLevelColor(log.Level)" Class="mr-2">
+                                            @log.Level
+                                        </MudChip>
+                                        <MudText Typo="Typo.caption">@log.Timestamp.ToString("HH:mm:ss")</MudText>
+                                        <MudSpacer />
+                                        <MudText Typo="Typo.caption" Class="text-secondary">@log.Application</MudText>
+                                    </div>
+                                    <MudText Typo="Typo.body2">@log.Message</MudText>
+                                </div>
+                            </MudTimelineItem>
+                        }
+                    </MudTimeline>
+                }
+
+                <!-- Pagination -->
+                @if (_totalResults > _maxResults)
+                {
+                    <div class="d-flex justify-center mt-4">
+                        <MudPagination Count="@GetTotalPages()" 
+                                      @bind-Selected="_currentPage" 
+                                      ShowFirstButton="true" 
+                                      ShowLastButton="true"
+                                      OnSelectedChanged="OnPageChanged" />
+                    </div>
+                }
+            </MudPaper>
+        }
+        else if (!_isSearching && _hasSearched)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="Icons.Material.Filled.SearchOff" Class="mr-2" />
+                    No logs found matching your search criteria. Try adjusting your filters or search query.
+                </div>
+            </MudAlert>
+        }
+        else
+        {
+            <!-- Welcome Message -->
+            <MudPaper Elevation="2" Class="pa-8 text-center">
+                <MudIcon Icon="Icons.Material.Filled.Search" Style="font-size: 4rem;" Color="Color.Primary" Class="mb-4" />
+                <MudText Typo="Typo.h5" Class="mb-2">Advanced Log Search</MudText>
+                <MudText Typo="Typo.body1" Class="mb-4">
+                    Search through millions of logs with powerful filters and real-time results.
+                </MudText>
+                <MudButton StartIcon="Icons.Material.Filled.Help" 
+                          Variant="Variant.Outlined" 
+                          Color="Color.Primary"
+                          OnClick="ShowQueryHelp">
+                    View Search Examples
+                </MudButton>
+            </MudPaper>
+        }
+    </MudContainer>
+</div>
+
+@code {
+    [Parameter] public string? TenantId { get; set; }
+
+    // Search state
+    private string _currentQuery = "";
+    private bool _isSearching = false;
+    private bool _hasSearched = false;
+    private bool _realTimeSearch = false;
+    private long _totalResults = 0;
+    private long _totalLogsIndexed = 0;
+    private int _searchDurationMs = 0;
+    private string _viewMode = "table";
+    private int _currentPage = 1;
+
+    // Filter state
+    private string _selectedLevel = "";
+    private string _selectedApplication = "";
+    private string _selectedEnvironment = "";
+    private string _selectedHost = "";
+    private string _correlationId = "";
+    private int _maxResults = 1000;
+    private bool _includeStackTrace = true;
+    private DateRange? _dateRange = new DateRange(DateTime.Now.AddDays(-1), DateTime.Now);
+
+    // Results
+    private List<SearchLogEntry> _searchResults = new();
+    private List<SearchFilter> _appliedFilters = new();
+    private List<string> _availableApplications = new();
+    private List<string> _availableHosts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _totalLogsIndexed = await SearchService.GetTotalLogsCountAsync(TenantId ?? "default-tenant");
+        await LoadAvailableFilters();
+        
+        // Set up real-time search if enabled
+        await InitializeRealTimeSearch();
+    }
+
+    private async Task InitializeRealTimeSearch()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("window.logStreamSignalR.onNewLogEntry", 
+                DotNetObjectReference.Create(this));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to initialize real-time search: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnNewLogEntry(object logEntry)
+    {
+        if (_realTimeSearch && _hasSearched)
+        {
+            // Check if new log matches current search criteria
+            await InvokeAsync(async () =>
+            {
+                var newLog = System.Text.Json.JsonSerializer.Deserialize<SearchLogEntry>(
+                    logEntry.ToString() ?? "", new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                
+                if (newLog != null && MatchesCurrentFilters(newLog))
+                {
+                    _searchResults.Insert(0, newLog);
+                    _totalResults++;
+                    
+                    // Keep only latest 1000 results in real-time mode
+                    if (_searchResults.Count > 1000)
+                    {
+                        _searchResults.RemoveAt(_searchResults.Count - 1);
+                    }
+                    
+                    StateHasChanged();
+                }
+            });
+        }
+    }
+
+    private async Task ExecuteSearch()
+    {
+        _isSearching = true;
+        _hasSearched = true;
+        StateHasChanged();
+
+        try
+        {
+            var searchRequest = BuildSearchRequest();
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            
+            var results = await SearchService.SearchLogsAsync(searchRequest);
+            
+            stopwatch.Stop();
+            _searchDurationMs = (int)stopwatch.ElapsedMilliseconds;
+
+            _searchResults = results.Results.ToList();
+            _totalResults = results.TotalCount;
+
+            UpdateAppliedFilters();
+            await UpdateSearchHistogram();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Search failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSearching = false;
+            StateHasChanged();
+        }
+    }
+
+    private SearchRequest BuildSearchRequest()
+    {
+        return new SearchRequest
+        {
+            TenantId = TenantId ?? "default-tenant",
+            Query = _currentQuery,
+            Level = string.IsNullOrEmpty(_selectedLevel) ? null : _selectedLevel,
+            Application = string.IsNullOrEmpty(_selectedApplication) ? null : _selectedApplication,
+            Environment = string.IsNullOrEmpty(_selectedEnvironment) ? null : _selectedEnvironment,
+            Host = string.IsNullOrEmpty(_selectedHost) ? null : _selectedHost,
+            CorrelationId = string.IsNullOrEmpty(_correlationId) ? null : _correlationId,
+            StartDate = _dateRange?.Start,
+            EndDate = _dateRange?.End,
+            MaxResults = _maxResults,
+            IncludeStackTrace = _includeStackTrace,
+            Page = _currentPage,
+            Size = 100
+        };
+    }
+
+    private async Task OnSearchKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ExecuteSearch();
+        }
+    }
+
+    private async Task LoadAvailableFilters()
+    {
+        try
+        {
+            _availableApplications = (await SearchService.GetAvailableApplicationsAsync(TenantId ?? "default-tenant")).ToList();
+            _availableHosts = (await SearchService.GetAvailableHostsAsync(TenantId ?? "default-tenant")).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load available filters: {ex.Message}");
+        }
+    }
+
+    private async Task<IEnumerable<string>> SearchApplications(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return _availableApplications;
+        
+        return _availableApplications.Where(x => x.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<IEnumerable<string>> SearchHosts(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return _availableHosts;
+        
+        return _availableHosts.Where(x => x.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void UpdateAppliedFilters()
+    {
+        _appliedFilters.Clear();
+
+        if (!string.IsNullOrEmpty(_selectedLevel))
+            _appliedFilters.Add(new SearchFilter { Field = "level", Value = _selectedLevel, Display = $"Level: {_selectedLevel}", Color = GetLogLevelColor(_selectedLevel), Icon = GetLogLevelIcon(_selectedLevel) });
+
+        if (!string.IsNullOrEmpty(_selectedApplication))
+            _appliedFilters.Add(new SearchFilter { Field = "application", Value = _selectedApplication, Display = $"App: {_selectedApplication}", Color = Color.Info, Icon = Icons.Material.Filled.Apps });
+
+        if (!string.IsNullOrEmpty(_selectedEnvironment))
+            _appliedFilters.Add(new SearchFilter { Field = "environment", Value = _selectedEnvironment, Display = $"Env: {_selectedEnvironment}", Color = Color.Secondary, Icon = Icons.Material.Filled.CloudQueue });
+
+        if (!string.IsNullOrEmpty(_selectedHost))
+            _appliedFilters.Add(new SearchFilter { Field = "host", Value = _selectedHost, Display = $"Host: {_selectedHost}", Color = Color.Default, Icon = Icons.Material.Filled.Computer });
+
+        if (_dateRange != null)
+            _appliedFilters.Add(new SearchFilter { Field = "dateRange", Value = "", Display = $"{_dateRange.Start?.ToString("MM/dd")} - {_dateRange.End?.ToString("MM/dd")}", Color = Color.Primary, Icon = Icons.Material.Filled.DateRange });
+    }
+
+    private void RemoveFilter(SearchFilter filter)
+    {
+        switch (filter.Field)
+        {
+            case "level":
+                _selectedLevel = "";
+                break;
+            case "application":
+                _selectedApplication = "";
+                break;
+            case "environment":
+                _selectedEnvironment = "";
+                break;
+            case "host":
+                _selectedHost = "";
+                break;
+            case "dateRange":
+                _dateRange = null;
+                break;
+        }
+
+        UpdateAppliedFilters();
+        StateHasChanged();
+    }
+
+    private async Task ClearSearch()
+    {
+        _currentQuery = "";
+        _selectedLevel = "";
+        _selectedApplication = "";
+        _selectedEnvironment = "";
+        _selectedHost = "";
+        _correlationId = "";
+        _dateRange = new DateRange(DateTime.Now.AddDays(-1), DateTime.Now);
+        _maxResults = 1000;
+        _includeStackTrace = true;
+        _searchResults.Clear();
+        _appliedFilters.Clear();
+        _hasSearched = false;
+        _totalResults = 0;
+        _currentPage = 1;
+        StateHasChanged();
+    }
+
+    private async Task SaveCurrentSearch()
+    {
+        if (string.IsNullOrEmpty(_currentQuery)) return;
+
+        var parameters = new DialogParameters
+        {
+            ["Query"] = _currentQuery,
+            ["Filters"] = _appliedFilters.ToList()
+        };
+
+        var dialog = await DialogService.ShowAsync<SaveSearchDialog>("Save Search", parameters);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data != null)
+        {
+            var searchName = result.Data.ToString();
+            await SearchService.SaveSearchAsync(TenantId ?? "default-tenant", searchName, BuildSearchRequest());
+            Snackbar.Add($"Search '{searchName}' saved successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenSavedSearches()
+    {
+        var dialog = await DialogService.ShowAsync<SavedSearchesDialog>("Saved Searches");
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is SavedSearch savedSearch)
+        {
+            // Load the saved search
+            _currentQuery = savedSearch.Request.Query ?? "";
+            _selectedLevel = savedSearch.Request.Level ?? "";
+            _selectedApplication = savedSearch.Request.Application ?? "";
+            _selectedEnvironment = savedSearch.Request.Environment ?? "";
+            _selectedHost = savedSearch.Request.Host ?? "";
+            _correlationId = savedSearch.Request.CorrelationId ?? "";
+            
+            if (savedSearch.Request.StartDate.HasValue && savedSearch.Request.EndDate.HasValue)
+            {
+                _dateRange = new DateRange(savedSearch.Request.StartDate.Value, savedSearch.Request.EndDate.Value);
+            }
+
+            await ExecuteSearch();
+        }
+    }
+
+    private async Task ExportResults()
+    {
+        if (!_searchResults.Any()) return;
+
+        var parameters = new DialogParameters
+        {
+            ["SearchResults"] = _searchResults,
+            ["TotalResults"] = _totalResults,
+            ["SearchQuery"] = _currentQuery
+        };
+
+        var dialog = await DialogService.ShowAsync<ExportDialog>("Export Search Results", parameters);
+    }
+
+    private void SetViewMode(string mode)
+    {
+        _viewMode = mode;
+        StateHasChanged();
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _currentPage = page;
+        await ExecuteSearch();
+    }
+
+    private int GetTotalPages()
+    {
+        return (int)Math.Ceiling((double)_totalResults / 100);
+    }
+
+    private bool MatchesCurrentFilters(SearchLogEntry log)
+    {
+        if (!string.IsNullOrEmpty(_selectedLevel) && log.Level != _selectedLevel) return false;
+        if (!string.IsNullOrEmpty(_selectedApplication) && log.Application != _selectedApplication) return false;
+        if (!string.IsNullOrEmpty(_selectedEnvironment) && log.Environment != _selectedEnvironment) return false;
+        if (!string.IsNullOrEmpty(_selectedHost) && log.Host != _selectedHost) return false;
+        
+        if (!string.IsNullOrEmpty(_currentQuery))
+        {
+            var queryLower = _currentQuery.ToLower();
+            if (!log.Message.ToLower().Contains(queryLower)) return false;
+        }
+
+        return true;
+    }
+
+    private async Task UpdateSearchHistogram()
+    {
+        try
+        {
+            var histogramData = await SearchService.GetSearchHistogramAsync(BuildSearchRequest());
+            var data = new
+            {
+                labels = histogramData.Select(h => h.Timestamp.ToString("HH:mm")).ToArray(),
+                datasets = new[]
+                {
+                    new
+                    {
+                        label = "Log Volume",
+                        data = histogramData.Select(h => h.Count).ToArray(),
+                        backgroundColor = "rgba(102, 126, 234, 0.8)",
+                        borderColor = "#667eea",
+                        borderWidth = 1
+                    }
+                }
+            };
+
+            await JSRuntime.InvokeVoidAsync("updateBarChart", "searchHistogram", data);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to update search histogram: {ex.Message}");
+        }
+    }
+
+    private void OnLogRowClick(TableRowClickEventArgs<SearchLogEntry> args)
+    {
+        ViewLogDetails(args.Item);
+    }
+
+    private async Task ViewLogDetails(SearchLogEntry log)
+    {
+        var parameters = new DialogParameters
+        {
+            ["LogEntry"] = log
+        };
+
+        await DialogService.ShowAsync<LogDetailsDialog>("Log Details", parameters, 
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+    }
+
+    private async Task ShowCorrelatedLogs(SearchLogEntry log)
+    {
+        if (!string.IsNullOrEmpty(log.CorrelationId))
+        {
+            _correlationId = log.CorrelationId;
+            _currentQuery = $"correlationId:{log.CorrelationId}";
+            await ExecuteSearch();
+        }
+        else
+        {
+            Snackbar.Add("No correlation ID found for this log entry", Severity.Info);
+        }
+    }
+
+    private async Task ShowQueryHelp()
+    {
+        await DialogService.ShowAsync<QueryHelpDialog>("Search Query Help");
+    }
+
+    private string HighlightSearchTerms(string text)
+    {
+        if (string.IsNullOrEmpty(_currentQuery) || string.IsNullOrEmpty(text))
+            return text;
+
+        // Simple highlighting - in a real implementation, you'd want more sophisticated term extraction
+        var terms = _currentQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => !t.StartsWith("level:") && !t.StartsWith("application:") && !t.StartsWith("AND") && !t.StartsWith("OR"))
+            .Select(t => t.Trim('*', '"'))
+            .Where(t => t.Length > 2);
+
+        var result = text;
+        foreach (var term in terms)
+        {
+            result = result.Replace(term, $"<mark>{term}</mark>", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return result;
+    }
+
+    // UI Helper Methods
+    private Color GetLogLevelColor(string level) => level.ToUpper() switch
+    {
+        "TRACE" => Color.Default,
+        "DEBUG" => Color.Info,
+        "INFO" => Color.Success,
+        "WARN" => Color.Warning,
+        "ERROR" => Color.Error,
+        "FATAL" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private string GetLogLevelIcon(string level) => level.ToUpper() switch
+    {
+        "TRACE" => Icons.Material.Filled.FilterTiltShift,
+        "DEBUG" => Icons.Material.Filled.BugReport,
+        "INFO" => Icons.Material.Filled.Info,
+        "WARN" => Icons.Material.Filled.Warning,
+        "ERROR" => Icons.Material.Filled.Error,
+        "FATAL" => Icons.Material.Filled.Report,
+        _ => Icons.Material.Filled.Circle
+    };
+
+    private string GetLogLevelCssClass(string level) => $"log-level-{level.ToLower()}";
+
+    private Color GetLogLevelTimelineColor(string level) => level.ToUpper() switch
+    {
+        "ERROR" => Color.Error,
+        "FATAL" => Color.Secondary,
+        "WARN" => Color.Warning,
+        "INFO" => Color.Success,
+        _ => Color.Info
+    };
+
+    public void Dispose()
+    {
+        // Cleanup real-time connections
+    }
+
+    // Models for the search page
+    public class SearchFilter
+    {
+        public string Field { get; set; } = "";
+        public string Value { get; set; } = "";
+        public string Display { get; set; } = "";
+        public Color Color { get; set; } = Color.Default;
+        public string Icon { get; set; } = Icons.Material.Filled.FilterAlt;
+    }
+}

@@ -1,0 +1,446 @@
+@page "/logs"
+@page "/logs/{TenantId}"
+@using LogStream.Web.Services
+@using LogStream.Web.Models
+@using LogStream.Web.Components.Shared
+@inject IDashboardService DashboardService
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+
+<PageTitle>Logs - LogStream Analytics</PageTitle>
+
+<div class="logs-container p-md">
+    <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge">
+        <!-- Header -->
+        <MudPaper Elevation="2" Class="pa-4 mb-4 bg-surface rounded-lg">
+            <MudGrid AlignItems="Center">
+                <MudItem xs="12" md="8">
+                    <MudText Typo="Typo.h4" Class="mb-2" role="heading" aria-level="1">
+                        <MudIcon Icon="Icons.Material.Filled.List" Class="mr-2" aria-hidden="true" />
+                        Log Viewer
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="text-secondary">
+                        View and analyze system logs in real-time • Tenant: @(TenantId ?? "All Tenants")
+                    </MudText>
+                </MudItem>
+                <MudItem xs="12" md="4" Class="d-flex justify-end">
+                    <MudButton StartIcon="Icons.Material.Filled.Download" 
+                              Variant="Variant.Filled" 
+                              Color="Color.Primary"
+                              OnClick="ExportLogs"
+                              Class="mr-2">
+                        Export
+                    </MudButton>
+                    <MudButton StartIcon="Icons.Material.Filled.Clear" 
+                              Variant="Variant.Outlined" 
+                              Color="Color.Secondary"
+                              OnClick="ClearLogs">
+                        Clear
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <!-- Filters -->
+        <MudPaper Elevation="2" Class="pa-4 mb-4 bg-surface rounded-lg">
+            <MudGrid AlignItems="Center">
+                <MudItem xs="12" md="3">
+                    <MudSelect @bind-Value="_selectedLevel" 
+                              Label="Log Level" 
+                              Variant="Variant.Outlined" 
+                              Dense="true">
+                        <MudSelectItem Value="@("")">All Levels</MudSelectItem>
+                        <MudSelectItem Value="@("TRACE")">TRACE</MudSelectItem>
+                        <MudSelectItem Value="@("DEBUG")">DEBUG</MudSelectItem>
+                        <MudSelectItem Value="@("INFO")">INFO</MudSelectItem>
+                        <MudSelectItem Value="@("WARN")">WARN</MudSelectItem>
+                        <MudSelectItem Value="@("ERROR")">ERROR</MudSelectItem>
+                        <MudSelectItem Value="@("FATAL")">FATAL</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudTextField @bind-Value="_selectedApplication"
+                                 Label="Application"
+                                 Variant="Variant.Outlined"
+                                 Dense="true" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_searchQuery"
+                                 Label="Search logs..."
+                                 Variant="Variant.Outlined"
+                                 Dense="true"
+                                 Adornment="Adornment.End"
+                                 AdornmentIcon="Icons.Material.Filled.Search" />
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudSwitch @bind-Checked="_realTimeMode" 
+                              Label="Real-time" 
+                              Color="Color.Success" />
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <!-- Log Stream -->
+        <MudPaper Elevation="2" Class="pa-4 bg-surface rounded-lg">
+            <div class="d-flex justify-space-between align-center mb-4">
+                <MudText Typo="Typo.h6">Log Stream</MudText>
+                <div class="d-flex align-center">
+                    <MudText Typo="Typo.caption" Class="mr-3">
+                        @_logEntries.Count logs • Last updated: @_lastUpdated.ToString("HH:mm:ss")
+                    </MudText>
+                    <MudIconButton Icon="Icons.Material.Filled.Refresh" 
+                                  Size="Size.Small" 
+                                  Color="Color.Primary"
+                                  OnClick="RefreshLogs" />
+                    <MudIconButton Icon="@(_isPaused ? Icons.Material.Filled.PlayArrow : Icons.Material.Filled.Pause)" 
+                                  Size="Size.Small" 
+                                  Color="Color.Secondary"
+                                  OnClick="TogglePause" />
+                </div>
+            </div>
+
+            <!-- Virtualized Log List -->
+            <VirtualizedList Items="_logEntries" 
+                            Height="600px" 
+                            ItemSize="60"
+                            TItem="LogEntryModel">
+                <ItemTemplate>
+                    <div class="log-entry-row @GetLogLevelClass(context.Level)" 
+                         @onclick="() => SelectLogEntry(context)">
+                        <div class="log-entry-content">
+                            <div class="log-entry-header">
+                                <span class="log-timestamp">@context.Timestamp.ToString("HH:mm:ss.fff")</span>
+                                <MudChip Size="Size.Small" 
+                                        Color="GetLogLevelColor(context.Level)"
+                                        Class="log-level-chip">
+                                    @context.Level
+                                </MudChip>
+                                <span class="log-application">@context.Application</span>
+                                <span class="log-host">@context.Host</span>
+                            </div>
+                            <div class="log-message">
+                                @context.Message
+                            </div>
+                        </div>
+                    </div>
+                </ItemTemplate>
+            </VirtualizedList>
+        </MudPaper>
+
+        <!-- Log Details Panel -->
+        @if (_selectedLogEntry != null)
+        {
+            <MudPaper Elevation="2" Class="pa-4 mt-4 bg-surface rounded-lg">
+                <div class="d-flex justify-space-between align-center mb-3">
+                    <MudText Typo="Typo.h6">Log Details</MudText>
+                    <MudIconButton Icon="Icons.Material.Filled.Close" 
+                                  Size="Size.Small"
+                                  OnClick="() => _selectedLogEntry = null" />
+                </div>
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudTextField Label="Timestamp" 
+                                     Value="@_selectedLogEntry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff")" 
+                                     ReadOnly="true" 
+                                     Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField Label="Log Level" 
+                                     Value="@_selectedLogEntry.Level" 
+                                     ReadOnly="true" 
+                                     Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField Label="Application" 
+                                     Value="@_selectedLogEntry.Application" 
+                                     ReadOnly="true" 
+                                     Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField Label="Host" 
+                                     Value="@_selectedLogEntry.Host" 
+                                     ReadOnly="true" 
+                                     Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField Label="Message" 
+                                     Value="@_selectedLogEntry.Message" 
+                                     ReadOnly="true" 
+                                     Variant="Variant.Outlined" 
+                                     Lines="3" />
+                    </MudItem>
+                    @if (!string.IsNullOrEmpty(_selectedLogEntry.Exception))
+                    {
+                        <MudItem xs="12">
+                            <MudTextField Label="Exception" 
+                                         Value="@_selectedLogEntry.Exception" 
+                                         ReadOnly="true" 
+                                         Variant="Variant.Outlined" 
+                                         Lines="5" />
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudPaper>
+        }
+    </MudContainer>
+</div>
+
+<style>
+    .logs-container {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+    }
+    
+    .log-entry-row {
+        padding: 12px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+    
+    .log-entry-row:hover {
+        background-color: rgba(102, 126, 234, 0.05);
+    }
+    
+    .log-entry-row.selected {
+        background-color: rgba(102, 126, 234, 0.1);
+        border-left: 4px solid var(--primary-color);
+    }
+    
+    .log-entry-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+        font-size: 12px;
+    }
+    
+    .log-timestamp {
+        color: var(--text-secondary);
+        font-family: var(--font-family-mono);
+        font-weight: 500;
+    }
+    
+    .log-level-chip {
+        min-width: 60px;
+    }
+    
+    .log-application {
+        color: var(--info-color);
+        font-weight: 500;
+    }
+    
+    .log-host {
+        color: var(--text-secondary);
+        font-size: 11px;
+    }
+    
+    .log-message {
+        font-family: var(--font-family-mono);
+        font-size: 13px;
+        line-height: 1.4;
+        color: var(--text-primary);
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    
+    .log-entry-trace .log-message { color: var(--log-trace); }
+    .log-entry-debug .log-message { color: var(--log-debug); }
+    .log-entry-info .log-message { color: var(--log-info); }
+    .log-entry-warn .log-message { color: var(--log-warn); }
+    .log-entry-error .log-message { color: var(--log-error); }
+    .log-entry-fatal .log-message { color: var(--log-fatal); }
+    
+    @media (max-width: 768px) {
+        .log-entry-header {
+            flex-wrap: wrap;
+        }
+        
+        .log-entry-row {
+            padding: 8px;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public string? TenantId { get; set; }
+
+    private string _selectedLevel = "";
+    private string _selectedApplication = "";
+    private string _searchQuery = "";
+    private bool _realTimeMode = true;
+    private bool _isPaused = false;
+    private DateTime _lastUpdated = DateTime.Now;
+    private LogEntryModel? _selectedLogEntry;
+    private List<LogEntryModel> _logEntries = new();
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+        StartRealTimeUpdates();
+    }
+
+    private async Task LoadLogs()
+    {
+        // Simulate loading logs
+        await Task.Delay(500);
+        
+        var random = new Random();
+        var levels = new[] { "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL" };
+        var applications = new[] { "WebApp", "API", "Database", "Cache", "Worker" };
+        var hosts = new[] { "web-01", "web-02", "api-01", "db-01", "cache-01" };
+        var messages = new[]
+        {
+            "User login successful",
+            "Database connection established",
+            "Cache miss for key: user_123",
+            "Processing request for endpoint /api/users",
+            "Failed to connect to external service",
+            "Memory usage: 85%",
+            "Request completed in 245ms",
+            "Validation error: Invalid email format"
+        };
+
+        _logEntries = Enumerable.Range(0, 100)
+            .Select(i => new LogEntryModel
+            {
+                Id = i,
+                Timestamp = DateTime.Now.AddMinutes(-random.Next(0, 60)),
+                Level = levels[random.Next(levels.Length)],
+                Application = applications[random.Next(applications.Length)],
+                Host = hosts[random.Next(hosts.Length)],
+                Message = messages[random.Next(messages.Length)],
+                Exception = random.Next(0, 10) == 0 ? "System.Exception: Sample exception message" : null
+            })
+            .OrderByDescending(x => x.Timestamp)
+            .ToList();
+
+        _lastUpdated = DateTime.Now;
+    }
+
+    private void StartRealTimeUpdates()
+    {
+        if (_realTimeMode && !_isPaused)
+        {
+            _refreshTimer = new Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await AddNewLogEntry();
+                    StateHasChanged();
+                });
+            }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        }
+    }
+
+    private async Task AddNewLogEntry()
+    {
+        var random = new Random();
+        var levels = new[] { "TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL" };
+        var applications = new[] { "WebApp", "API", "Database", "Cache", "Worker" };
+        var hosts = new[] { "web-01", "web-02", "api-01", "db-01", "cache-01" };
+        var messages = new[]
+        {
+            "New user registration",
+            "Database query executed",
+            "Cache updated",
+            "API request processed",
+            "Background job completed",
+            "Session expired",
+            "File uploaded successfully",
+            "Email sent to user"
+        };
+
+        var newEntry = new LogEntryModel
+        {
+            Id = _logEntries.Count,
+            Timestamp = DateTime.Now,
+            Level = levels[random.Next(levels.Length)],
+            Application = applications[random.Next(applications.Length)],
+            Host = hosts[random.Next(hosts.Length)],
+            Message = messages[random.Next(messages.Length)]
+        };
+
+        _logEntries.Insert(0, newEntry);
+        
+        // Keep only last 1000 entries
+        if (_logEntries.Count > 1000)
+        {
+            _logEntries.RemoveAt(_logEntries.Count - 1);
+        }
+
+        _lastUpdated = DateTime.Now;
+    }
+
+    private async Task RefreshLogs()
+    {
+        await LoadLogs();
+        Snackbar.Add("Logs refreshed", Severity.Success);
+    }
+
+    private async Task TogglePause()
+    {
+        _isPaused = !_isPaused;
+        
+        if (_isPaused)
+        {
+            _refreshTimer?.Dispose();
+            Snackbar.Add("Real-time updates paused", Severity.Info);
+        }
+        else
+        {
+            StartRealTimeUpdates();
+            Snackbar.Add("Real-time updates resumed", Severity.Success);
+        }
+    }
+
+    private async Task ExportLogs()
+    {
+        Snackbar.Add("Exporting logs...", Severity.Info);
+        // Simulate export
+        await Task.Delay(1000);
+        Snackbar.Add("Logs exported successfully", Severity.Success);
+    }
+
+    private async Task ClearLogs()
+    {
+        _logEntries.Clear();
+        _selectedLogEntry = null;
+        Snackbar.Add("Logs cleared", Severity.Success);
+    }
+
+    private void SelectLogEntry(LogEntryModel entry)
+    {
+        _selectedLogEntry = entry;
+    }
+
+    private string GetLogLevelClass(string level) => $"log-entry-{level.ToLower()}";
+
+    private Color GetLogLevelColor(string level) => level.ToUpper() switch
+    {
+        "TRACE" => Color.Default,
+        "DEBUG" => Color.Info,
+        "INFO" => Color.Success,
+        "WARN" => Color.Warning,
+        "ERROR" => Color.Error,
+        "FATAL" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+
+    public class LogEntryModel
+    {
+        public int Id { get; set; }
+        public DateTime Timestamp { get; set; }
+        public string Level { get; set; } = "";
+        public string Application { get; set; } = "";
+        public string Host { get; set; } = "";
+        public string Message { get; set; } = "";
+        public string? Exception { get; set; }
+    }
+}

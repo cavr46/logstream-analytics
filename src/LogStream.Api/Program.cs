@@ -93,6 +93,27 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Add Rate Limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("IngestionPolicy", policy =>
+    {
+        policy.AddPartitionedPolicy<string>(httpContext =>
+        {
+            var tenantId = httpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault() ?? "default";
+            return tenantId;
+        })
+        .AddTokenBucketLimiter("IngestionPolicy", options =>
+        {
+            options.TokenLimit = 1000;
+            options.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+            options.QueueLimit = 100;
+            options.ReplenishmentPeriod = TimeSpan.FromMinutes(1);
+            options.TokensPerPeriod = 1000;
+        });
+    });
+});
+
 // Add Application Insights
 builder.Services.AddApplicationInsightsTelemetry();
 
@@ -116,6 +137,7 @@ app.UseMiddleware<RateLimitingMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -124,6 +146,9 @@ app.UseMetricServer();
 app.UseHttpMetrics();
 
 app.UseFastEndpoints();
+
+// Map controllers
+app.MapControllers();
 
 // Map health checks
 app.MapHealthChecks("/health");

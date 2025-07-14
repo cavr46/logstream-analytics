@@ -62,11 +62,12 @@ builder.Services.AddSingleton<IElasticClient>(provider =>
 // Register repositories and services
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
-builder.Services.AddScoped<ISearchService, ElasticsearchService>();
+// Note: ElasticsearchService will be the production implementation
+// builder.Services.AddScoped<ISearchService, ElasticsearchService>();
 
 // Add web-specific services
 builder.Services.AddScoped<IDashboardService, DashboardService>();
-builder.Services.AddScoped<ILogStreamApiService, LogStreamApiService>();
+builder.Services.AddScoped<ISearchService, SearchService>();
 builder.Services.AddScoped<IRealTimeService, RealTimeService>();
 
 // Add Authentication

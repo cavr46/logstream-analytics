@@ -3,6 +3,7 @@
 @page "/dashboard/{TenantId}"
 @using LogStream.Web.Services
 @using LogStream.Web.Models
+@using LogStream.Web.Components.Shared
 @using System.Text.Json
 @inject IDashboardService DashboardService
 @inject IJSRuntime JSRuntime
@@ -18,6 +19,10 @@
         min-height: 100vh;
     }
     
+    .dark-theme .dashboard-container {
+        background: linear-gradient(135deg, #1a1d29 0%, #2a2d3a 100%);
+    }
+    
     @media (max-width: 768px) {
         .dashboard-container {
             padding: 8px;
@@ -27,9 +32,15 @@
     .metric-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        border-radius: 12px;
+        border-radius: 16px;
         overflow: hidden;
         position: relative;
+        transition: all 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
     }
     
     .metric-card.success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
@@ -43,6 +54,12 @@
         top: 16px;
         opacity: 0.3;
         font-size: 4rem;
+        transition: all 0.3s ease;
+    }
+    
+    .metric-card:hover .metric-icon {
+        opacity: 0.5;
+        transform: scale(1.1);
     }
     
     @media (max-width: 768px) {
@@ -174,7 +191,7 @@
                         <MudChip Icon="Icons.Material.Filled.Circle" 
                                 Color="Color.Success" 
                                 Size="Size.Small" 
-                                Class="real-time-indicator ml-2"
+                                Class="real-time-indicator ml-2 live-indicator"
                                 aria-label="Real-time mode active">LIVE</MudChip>
                     }
                 </MudItem>
@@ -183,8 +200,9 @@
 
         @if (_loading && _dashboardData == null)
         {
-            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
-            <MudText Align="Align.Center">Loading dashboard data...</MudText>
+            <div class="fade-in">
+                <SkeletonLoader Type="dashboard" />
+            </div>
         }
         else if (_dashboardData != null)
         {
@@ -193,7 +211,7 @@
                 <MudItem xs="12">
                     <MudGrid Spacing="2">
                         <MudItem xs="12" sm="6" md="3">
-                            <MudPaper Class="metric-card pa-4" Style="position: relative;" role="region" aria-label="Total logs today metric">
+                            <MudPaper Class="metric-card hover-lift pa-4" Style="position: relative;" role="region" aria-label="Total logs today metric">
                                 <div class="metric-icon" aria-hidden="true">📊</div>
                                 <MudText Typo="Typo.body2" Class="mb-1">Total Logs Today</MudText>
                                 <MudText Typo="@(GetResponsiveTypo("h3", "h4", "h5"))" Class="mb-1" aria-label="@_dashboardData.Metrics.TotalLogsToday.ToString("N0") logs">@_dashboardData.Metrics.TotalLogsToday.ToString("N0")</MudText>
@@ -207,7 +225,7 @@
                         </MudItem>
                         
                         <MudItem xs="12" sm="6" md="3">
-                            <MudPaper Class="metric-card error pa-4" Style="position: relative;">
+                            <MudPaper Class="metric-card error hover-lift pa-4" Style="position: relative;">
                                 <div class="metric-icon">🚨</div>
                                 <MudText Typo="Typo.body2" Class="mb-1">Error Rate</MudText>
                                 <MudText Typo="@(GetResponsiveTypo("h3", "h4", "h5"))" Class="mb-1">@_dashboardData.Metrics.ErrorRate.ToString("F2")%</MudText>
@@ -220,7 +238,7 @@
                         </MudItem>
                         
                         <MudItem xs="12" sm="6" md="3">
-                            <MudPaper Class="metric-card info pa-4" Style="position: relative;">
+                            <MudPaper Class="metric-card info hover-lift pa-4" Style="position: relative;">
                                 <div class="metric-icon">💾</div>
                                 <MudText Typo="Typo.body2" Class="mb-1">Storage Used</MudText>
                                 <MudText Typo="@(GetResponsiveTypo("h3", "h4", "h5"))" Class="mb-1">@FormatBytes(_dashboardData.Metrics.StorageUsedMB * 1024 * 1024)</MudText>
@@ -234,7 +252,7 @@
                         </MudItem>
                         
                         <MudItem xs="12" sm="6" md="3">
-                            <MudPaper Class="metric-card success pa-4" Style="position: relative;">
+                            <MudPaper Class="metric-card success hover-lift pa-4" Style="position: relative;">
                                 <div class="metric-icon">⚡</div>
                                 <MudText Typo="Typo.body2" Class="mb-1">Throughput</MudText>
                                 <MudText Typo="@(GetResponsiveTypo("h3", "h4", "h5"))" Class="mb-1">@_dashboardData.Metrics.LogsPerSecond.ToString("N0")</MudText>
@@ -255,8 +273,8 @@
                             @foreach (var service in _dashboardData.SystemHealth)
                             {
                                 <MudItem xs="6" sm="4" md="2">
-                                    <MudPaper Class="pa-3 text-center" 
-                                             Style="@($"background: {GetHealthColor(service.Status)}; color: white;")">
+                                    <MudPaper Class="pa-3 text-center hover-scale" 
+                                             Style="@($"background: {GetHealthColor(service.Status)}; color: white; border-radius: 12px;")">
                                         <MudIcon Icon="@GetHealthIcon(service.Status)" Size="@GetResponsiveIconSize()" Class="mb-1" />
                                         <MudText Typo="@GetResponsiveTypo("body2", "caption", "caption")" Class="mb-1">@service.ServiceName</MudText>
                                         <MudText Typo="Typo.caption">@service.ResponseTime ms</MudText>
@@ -500,6 +518,39 @@
     </MudContainer>
 </div>
 
+<!-- Floating Action Button for Quick Actions -->
+<MudFab Color="Color.Primary" 
+       StartIcon="Icons.Material.Filled.Add" 
+       Class="fab"
+       Size="Size.Large"
+       OnClick="OpenQuickActions" />
+
+<!-- Quick Actions Menu -->
+@if (_showQuickActions)
+{
+    <MudMenu @bind-Open="_showQuickActions" 
+             AnchorOrigin="Origin.BottomRight" 
+             TransformOrigin="Origin.TopRight" 
+             Class="quick-actions-menu">
+        <MudMenuItem OnClick="() => NavigateToSearch()">
+            <MudIcon Icon="Icons.Material.Filled.Search" Class="mr-2" />
+            Quick Search
+        </MudMenuItem>
+        <MudMenuItem OnClick="() => NavigateToAlerts()">
+            <MudIcon Icon="Icons.Material.Filled.NotificationsActive" Class="mr-2" />
+            View Alerts
+        </MudMenuItem>
+        <MudMenuItem OnClick="() => ExportData()">
+            <MudIcon Icon="Icons.Material.Filled.FileDownload" Class="mr-2" />
+            Export Data
+        </MudMenuItem>
+        <MudMenuItem OnClick="() => RefreshDashboard()">
+            <MudIcon Icon="Icons.Material.Filled.Refresh" Class="mr-2" />
+            Refresh All
+        </MudMenuItem>
+    </MudMenu>
+}</div>
+
 @code {
     [Parameter] public string? TenantId { get; set; }
 
@@ -511,6 +562,7 @@
     private string _selectedLogLevel = "ALL";
     private bool _streamPaused = false;
     private List<RealtimeLogEntry> _realtimeLogs = new();
+    private bool _showQuickActions = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -910,6 +962,35 @@
             < 0 => "Trending down", 
             _ => "Stable trend"
         };
+    }
+
+    // FAB Quick Actions
+    private void OpenQuickActions()
+    {
+        _showQuickActions = !_showQuickActions;
+        StateHasChanged();
+    }
+
+    private void NavigateToSearch()
+    {
+        // Navigate to search page
+        _showQuickActions = false;
+        // In a real implementation, you would use NavigationManager
+        Snackbar.Add("Navigating to Search...", Severity.Info);
+    }
+
+    private void NavigateToAlerts()
+    {
+        // Navigate to alerts page
+        _showQuickActions = false;
+        Snackbar.Add("Navigating to Alerts...", Severity.Info);
+    }
+
+    private void ExportData()
+    {
+        // Export dashboard data
+        _showQuickActions = false;
+        Snackbar.Add("Exporting dashboard data...", Severity.Success);
     }
 
     // Model for real-time log entries

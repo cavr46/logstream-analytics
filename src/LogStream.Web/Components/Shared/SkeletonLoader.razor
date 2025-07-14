@@ -1,0 +1,72 @@
+@* Skeleton Loading Component *@
+
+@if (Type == "card")
+{
+    <div class="skeleton skeleton-card"></div>
+}
+else if (Type == "text")
+{
+    <div class="skeleton skeleton-text @Size"></div>
+}
+else if (Type == "avatar")
+{
+    <div class="skeleton skeleton-avatar"></div>
+}
+else if (Type == "chart")
+{
+    <div class="skeleton skeleton-chart"></div>
+}
+else if (Type == "metric")
+{
+    <div class="metric-card-modern">
+        <div class="skeleton skeleton-text short" style="height: 40px; margin-bottom: 16px;"></div>
+        <div class="skeleton skeleton-text medium" style="height: 20px; margin-bottom: 8px;"></div>
+        <div class="skeleton skeleton-text short" style="height: 16px;"></div>
+    </div>
+}
+else if (Type == "table")
+{
+    <div class="table-modern">
+        @for (int i = 0; i < Rows; i++)
+        {
+            <div style="display: flex; gap: 16px; padding: 16px;">
+                @for (int j = 0; j < Columns; j++)
+                {
+                    <div class="skeleton skeleton-text" style="flex: 1; height: 20px;"></div>
+                }
+            </div>
+        }
+    </div>
+}
+else if (Type == "dashboard")
+{
+    <div class="row">
+        @for (int i = 0; i < 4; i++)
+        {
+            <div class="col-md-3 col-sm-6 mb-4">
+                <div class="metric-card-modern">
+                    <div class="skeleton skeleton-text short" style="height: 40px; margin-bottom: 16px;"></div>
+                    <div class="skeleton skeleton-text medium" style="height: 20px; margin-bottom: 8px;"></div>
+                    <div class="skeleton skeleton-text short" style="height: 16px;"></div>
+                </div>
+            </div>
+        }
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-md-8">
+            <div class="skeleton skeleton-chart"></div>
+        </div>
+        <div class="col-md-4">
+            <div class="skeleton skeleton-chart" style="height: 200px; margin-bottom: 16px;"></div>
+            <div class="skeleton skeleton-chart" style="height: 200px;"></div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Type { get; set; } = "card";
+    [Parameter] public string Size { get; set; } = "";
+    [Parameter] public int Rows { get; set; } = 5;
+    [Parameter] public int Columns { get; set; } = 4;
+}
